@@ -1,0 +1,31 @@
+
+node_modules/
+dist/
+.dockerignore
+.git
+.gitignore
+README.md
+
+# Кеши и временные файлы
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.npm/
+.yarn/
+.cache/
+
+# Логи и IDE
+*.log
+.idea/
+.vscode/
+
+# Файлы окружения (если не нужны в контейнере)
+.env
+.env.local
+.env.development
+
+# Артефакты сборки (если они генерируются внутри контейнера)
+build/
+out/
+.next/  # Для Next.js

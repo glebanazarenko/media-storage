@@ -19,3 +19,4 @@ autoflake==1.7.8
 pylint
 pydantic_settings
 python-jose[cryptography]
+alembic

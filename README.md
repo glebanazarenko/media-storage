@@ -10,19 +10,19 @@ docker-compose down -v
 
 При первом создании
 
-$ docker-compose exec backend aerich init -t src.database.config.TORTOISE_ORM
-Success create migrate location ./migrations
-Success write config to pyproject.toml
-
-$ docker-compose exec backend aerich init-db
-Success create app migrate location migrations/models
-Success generate schema for app "models"
-
+docker-compose exec backend alembic init migrations
 
 При обновлении Миграции
 
-docker-compose exec backend aerich migrate
-docker-compose exec backend aerich upgrade
+docker-compose exec backend alembic revision --autogenerate -m "описание_изменения"
+
+docker-compose exec backend alembic upgrade head
+
+БД
+
+docker-compose exec db psql -U postgres -d media_storage -c "\dt"
+docker-compose exec db psql -U postgres -d media_storage -c "Select count(*) from users"
+
 
 Для отладки
 

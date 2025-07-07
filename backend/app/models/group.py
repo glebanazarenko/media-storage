@@ -1,8 +1,11 @@
-from sqlalchemy import Column, String, Text, TIMESTAMP, func, ForeignKey
+import uuid
+
+from sqlalchemy import TIMESTAMP, Column, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
 from app.core.database import Base
-import uuid
+
 
 class Group(Base):
     __tablename__ = "groups"

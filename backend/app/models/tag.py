@@ -1,7 +1,10 @@
-from sqlalchemy import Column, String, TIMESTAMP, func
-from sqlalchemy.dialects.postgresql import UUID
-from app.core.database import Base
 import uuid
+
+from sqlalchemy import TIMESTAMP, Column, String, func
+from sqlalchemy.dialects.postgresql import UUID
+
+from app.core.database import Base
+
 
 class Tag(Base):
     __tablename__ = "tags"

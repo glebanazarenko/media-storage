@@ -1,9 +1,12 @@
-from sqlalchemy import Column, String, Boolean, TIMESTAMP
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from app.core.database import Base
 import uuid
+
+from sqlalchemy import TIMESTAMP, Boolean, Column, String
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
+from app.core.database import Base
+
 
 class User(Base):
     __tablename__ = "users"

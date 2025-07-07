@@ -1,7 +1,11 @@
-from sqlalchemy import Column, UUID as UUIDType, ForeignKey
-from sqlalchemy.orm import relationship
-from app.core.database import Base
 import uuid
+
+from sqlalchemy import UUID as UUIDType
+from sqlalchemy import Column, ForeignKey
+from sqlalchemy.orm import relationship
+
+from app.core.database import Base
+
 
 class FileGroup(Base):
     __tablename__ = "file_groups"

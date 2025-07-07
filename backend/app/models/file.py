@@ -1,8 +1,11 @@
-from sqlalchemy import Column, String, Integer, Text, JSON, ForeignKey, TIMESTAMP, func
+import uuid
+
+from sqlalchemy import JSON, TIMESTAMP, Column, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
 from app.core.database import Base
-import uuid
+
 
 class File(Base):
     __tablename__ = "files"

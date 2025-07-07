@@ -1,11 +1,13 @@
+import os
+from typing import AsyncGenerator, Generator
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from typing import Generator
-import os
-from dotenv import load_dotenv
-from app.core.config import settings
 
+from app.core.config import settings
 
 load_dotenv()
 
@@ -27,23 +29,14 @@ def get_db() -> Generator:
         db.close()
 
 
-
-
-
-
-
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from typing import AsyncGenerator
-
-SQLALCHEMY_DATABASE_URL_ASYNC = f"postgresql+asyncpg://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}" \
-                                f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
+SQLALCHEMY_DATABASE_URL_ASYNC = (
+    f"postgresql+asyncpg://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
+    f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
+)
 
 engine_async = create_async_engine(SQLALCHEMY_DATABASE_URL_ASYNC)
 AsyncSessionLocal = sessionmaker(
-    bind=engine_async,
-    class_=AsyncSession,
-    expire_on_commit=False
+    bind=engine_async, class_=AsyncSession, expire_on_commit=False
 )
 
 

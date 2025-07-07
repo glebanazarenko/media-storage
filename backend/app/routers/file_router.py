@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
-from app.models.file import File as DBFile
-# from app.schemas.file import FileCreate, FileResponse
-from app.core.database import get_db
-from sqlalchemy.orm import Session
-from typing import Optional
 import uuid
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.orm import Session
+
 # from app.services.file_service import upload_file_to_s3
 from app.core.config import settings
+
+# from app.schemas.file import FileCreate, FileResponse
+from app.core.database import get_db
+from app.models.file import File as DBFile
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -19,7 +22,7 @@ router = APIRouter(prefix="/files", tags=["Files"])
 # ):
 #     # Пример генерации ключа для S3
 #     key = f"uploads/{uuid.uuid4()}_{file.filename}"
-    
+
 #     # Сохранение файла в S3
 #     upload_file_to_s3(file.file, key)
 

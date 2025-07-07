@@ -40,7 +40,7 @@ docker-compose exec backend isort .
 
 docker-compose exec backend pylint src/
 
-./services/backend/format.sh
+./backend/format.sh
 
 
 Использовать датукласс, только pydentic, без маршмеллоу

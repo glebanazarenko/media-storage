@@ -22,6 +22,7 @@ docker-compose exec backend alembic upgrade head
 
 docker-compose exec db psql -U postgres -d media_storage -c "\dt"
 docker-compose exec db psql -U postgres -d media_storage -c "Select count(*) from users"
+docker-compose exec db psql -U postgres -d media_storage -c "Select * from users"
 
 
 Для отладки

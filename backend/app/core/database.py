@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from typing import AsyncGenerator, Generator
 
 from dotenv import load_dotenv
@@ -15,16 +16,20 @@ load_dotenv()
 SQLALCHEMY_DATABASE_URL = f"postgresql+psycopg2://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 Base = declarative_base()
 
 
-# Dependency для получения сессии в FastAPI
-def get_db() -> Generator:
+@contextmanager
+def get_db_session() -> Generator:
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
     finally:
         db.close()
 

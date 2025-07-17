@@ -1,45 +1,36 @@
-from datetime import timedelta
-from typing import Optional
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-
-# from app.schemas.user import UserCreate, UserResponse
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
 from app.core.security import create_access_token
-from app.models.user import User
-
-# from app.services.auth_service import authenticate_user
+from app.schemas.user_schemas import UserCreate, UserResponse
+from app.services.auth_service import authenticate_user, register_new_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# class Token(BaseModel):
-#     access_token: str
-#     token_type: str
 
-# @router.post("/login")
-# def login(
-#     form_data: UserCreate,
-#     db: Session = Depends(get_db)
-# ):
-#     user = authenticate_user(db, form_data.username, form_data.password)
-#     if not user:
-#         raise HTTPException(status_code=400, detail="Incorrect username or password")
+@router.post("/login")
+def login(
+    form_data: UserCreate
+):
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
 
-#     access_token = create_access_token(data={"sub": user.id})
+    access_token = create_access_token(data={"sub": user.id})
 
-#     return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer"}
 
-# @router.post("/register")
-# def register(
-#     user: UserCreate,
-#     db: Session = Depends(get_db)
-# ):
-#     # Здесь будет логика регистрации
-#     db_user = User(**user.model_dump())
-#     db.add(db_user)
-#     db.commit()
-#     db.refresh(db_user)
-#     return UserResponse.model_validate(db_user)
+
+@router.post("/register")
+def register(user: UserCreate):
+    db_user = register_new_user(user)
+    user_dict = {
+        "id": str(db_user.id),
+        "username": db_user.username,
+        "email": db_user.email,
+        "is_active": db_user.is_active,
+        "is_admin": db_user.is_admin,
+        "created_at": db_user.created_at,
+        "updated_at": db_user.updated_at if db_user.updated_at else db_user.created_at
+    }
+    return UserResponse.model_validate(user_dict)

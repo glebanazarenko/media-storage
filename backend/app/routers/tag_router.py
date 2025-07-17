@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 # from app.schemas.tag import TagCreate, TagResponse
-from app.core.database import get_db
-from app.models.tag import Tag
+from app.models.base import Tag
 
 router = APIRouter(prefix="/tags", tags=["Tags"])
 

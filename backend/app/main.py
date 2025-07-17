@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 # from app.models.base import Base  # Если у тебя есть base.py с Base = declarative_base()
-from app.core.config import settings  # Если ты используешь config.py для настроек
-from app.core.database import get_db
+from app.core.config import settings
+from app.core.database import get_db_session
 from app.routers import auth_router, file_router, group_router, tag_router
 
 # Инициализация приложения
@@ -32,15 +32,17 @@ app.add_middleware(
 )
 
 # Подключение роутеров
-app.include_router(auth_router.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(file_router.router, prefix="/api/files", tags=["Files"])
-app.include_router(group_router.router, prefix="/api/groups", tags=["Groups"])
-app.include_router(tag_router.router, prefix="/api/tags", tags=["Tags"])
+app.include_router(auth_router.router)
+app.include_router(file_router.router)
+app.include_router(group_router.router)
+app.include_router(tag_router.router)
 
 
 # Опционально: зависимость БД по умолчанию
 @app.get("/ping")
-def ping(db: Session = Depends(get_db)):
+def ping():
+    with get_db_session() as db:
+        pass
     return {"status": "ok", "message": "Backend is running!"}
 
 

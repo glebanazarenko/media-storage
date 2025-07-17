@@ -1,22 +1,15 @@
+import os
+import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
-
-import sys
-import os
+from sqlalchemy import engine_from_config, pool
 
 # Добавляем корень проекта в PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.models.file_group import FileGroup
-from app.models.file import File
-from app.models.group import Group
-from app.models.group_member import GroupMember
-from app.models.tag import Tag
-from app.models.user import User
+# from app.models.base import FileGroupAssociation
+from app.models.base import File, Group, GroupMember, Tag, User
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -70,7 +63,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    from app.core.database import engine, Base
+    from app.core.database import Base, engine
 
     connectable = engine
     target_metadata = Base.metadata

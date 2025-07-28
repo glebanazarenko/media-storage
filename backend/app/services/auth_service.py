@@ -1,15 +1,18 @@
-from sqlalchemy.orm import Session
+from fastapi import HTTPException
 
-from app.core.security import get_password_hash, verify_password
-from app.repositories.auth_repository import create_user, get_current_user
+from app.core.security import create_access_token, get_password_hash, verify_password
+from app.repositories.auth_repository import create_user, get_user_by_username
 from app.schemas.user_schemas import UserCreate
 
 
-def authenticate_user(username: str, password: str):
-    user = get_current_user(username)
+def authenticate_user(username: str, password: str) -> str:
+    user = get_user_by_username(username)
     if not user or not verify_password(password, user.password):
-        return None
-    return user
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+
+    access_token = create_access_token(data={"sub": str(user.id)})
+
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 def register_new_user(user_create: UserCreate):

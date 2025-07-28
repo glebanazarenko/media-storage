@@ -7,7 +7,7 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 
-def create_access_token(data: dict):
+def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(
         minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -17,6 +17,7 @@ def create_access_token(data: dict):
         to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
     )
     return encoded_jwt
+
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")

@@ -10,6 +10,11 @@ class UserCreate(BaseModel):
     password: str
 
 
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
 class UserResponse(BaseModel):
     id: str
     username: str
@@ -25,6 +30,7 @@ class UserResponse(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+
 
 class Token(BaseModel):
     access_token: str

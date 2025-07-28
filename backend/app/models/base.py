@@ -3,18 +3,19 @@ from datetime import datetime
 
 from sqlalchemy import JSON, TIMESTAMP
 from sqlalchemy import UUID as UUIDType
-from sqlalchemy import (Boolean, Column, ForeignKey, Integer, String, Table,
-                        Text, func)
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
 # Association table for many-to-many relationship between File and Group
 file_group = Table(
-    'file_groups',
+    "file_groups",
     Base.metadata,
-    Column('file_id', UUIDType(as_uuid=True), ForeignKey('files.id'), primary_key=True),
-    Column('group_id', UUIDType(as_uuid=True), ForeignKey('groups.id'), primary_key=True)
+    Column("file_id", UUIDType(as_uuid=True), ForeignKey("files.id"), primary_key=True),
+    Column(
+        "group_id", UUIDType(as_uuid=True), ForeignKey("groups.id"), primary_key=True
+    ),
 )
 
 
@@ -32,7 +33,9 @@ class File(Base):
     owner_id = Column(UUIDType(as_uuid=True), ForeignKey("users.id"), nullable=False)
     tags = Column(JSON, default=[])
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     owner = relationship("User", back_populates="files")
     groups = relationship("Group", secondary=file_group, back_populates="files")
@@ -62,7 +65,9 @@ class Group(Base):
     creator_id = Column(UUIDType(as_uuid=True), ForeignKey("users.id"), nullable=False)
     access_level = Column(String(20), default="reader")
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     creator = relationship("User", back_populates="created_groups")
     members = relationship("GroupMember", back_populates="group")
@@ -76,7 +81,9 @@ class Tag(Base):
     name = Column(String(50), unique=True, nullable=False)
     slug = Column(String(60), unique=True, nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class User(Base):
@@ -89,7 +96,9 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     files = relationship("File", back_populates="owner")
     group_memberships = relationship("GroupMember", back_populates="user")

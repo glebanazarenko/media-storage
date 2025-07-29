@@ -1,0 +1,55 @@
+import uuid
+
+import boto3
+from botocore.exceptions import ClientError
+from fastapi import HTTPException, UploadFile
+
+from app.core.config import settings
+from app.models.base import User
+from app.repositories.file_repository import create_file, get_file_by_id
+from app.schemas.file_schemas import FileCreate
+
+
+def upload_file_to_s3(file: UploadFile, key: str):
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    )
+    try:
+        s3_client.upload_fileobj(file.file, settings.AWS_S3_BUCKET_NAME, key)
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload to S3: {e}")
+
+
+def generate_key(filename: str):
+    return f"uploads/{uuid.uuid4()}_{filename}"
+
+
+def save_file_metadata(
+    file: UploadFile, description: str | None, tags: list[str], owner: User
+):
+    key = generate_key(file.filename)
+    upload_file_to_s3(file, key)
+
+    if not owner:
+        raise HTTPException(status_code=500, detail=f"Do not authorized")
+
+    file_create = FileCreate(
+        original_name=file.filename,
+        mime_type=file.content_type,
+        description=description,
+        tags=tags,
+        file_path=key,
+        size=file.size,
+        owner_id=owner.id,
+    )
+
+    return create_file(file_create)
+
+
+def get_file_service(file_id: str):
+    file = get_file_by_id(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")

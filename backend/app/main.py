@@ -10,6 +10,12 @@ from app.core.config import settings
 from app.core.database import get_db_session
 from app.routers import auth_router, file_router, group_router, tag_router
 
+# Глобальная настройка логирования
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 # Инициализация приложения
 app = FastAPI(
     title="Media Storage API",

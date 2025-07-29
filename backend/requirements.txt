@@ -21,3 +21,4 @@ pylint
 pydantic_settings
 python-jose[cryptography]
 alembic
+botocore

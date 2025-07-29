@@ -23,12 +23,13 @@ docker-compose exec backend alembic upgrade head
 docker-compose exec db psql -U postgres -d media_storage -c "\dt"
 docker-compose exec db psql -U postgres -d media_storage -c "Select count(*) from users"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from users"
+docker-compose exec db psql -U postgres -d media_storage -c "Select * from files"
 
 
 Для отладки
 
 docker-compose exec backend sh
-uvicorn src.main:app --host 0.0.0.0 --port 5000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
 uvicorn src.main:app --host 0.0.0.0 --port 5035 --reload
 
 Запуск команд из-под докера

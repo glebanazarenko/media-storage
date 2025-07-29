@@ -56,7 +56,6 @@ def create_access_token(data: dict) -> str:
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 oauth2_scheme = OAuth2PasswordBearerCookie(token_url="/auth/login")
 
 

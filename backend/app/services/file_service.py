@@ -7,6 +7,7 @@ from fastapi import HTTPException, UploadFile
 from app.core.config import settings
 from app.models.base import User
 from app.repositories.file_repository import create_file, get_file_by_id
+from app.repositories.tag_repository import get_or_create_tags
 from app.schemas.file_schemas import FileCreate
 
 
@@ -28,19 +29,22 @@ def generate_key(filename: str):
 
 
 def save_file_metadata(
-    file: UploadFile, description: str | None, tags: list[str], owner: User
+    file: UploadFile, description: str | None, tag_names: str, owner: User
 ):
     key = generate_key(file.filename)
     upload_file_to_s3(file, key)
 
     if not owner:
-        raise HTTPException(status_code=500, detail=f"Do not authorized")
+        raise HTTPException(status_code=401, detail=f"Do not authorized")
+
+    tag_names_list = [tag.strip() for tag in tag_names.split(",") if tag.strip()]
+    tag_ids = get_or_create_tags(tag_names_list)
 
     file_create = FileCreate(
         original_name=file.filename,
         mime_type=file.content_type,
         description=description,
-        tags=tags,
+        tags=tag_ids,
         file_path=key,
         size=file.size,
         owner_id=owner.id,

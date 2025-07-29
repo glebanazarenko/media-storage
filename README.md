@@ -24,6 +24,7 @@ docker-compose exec db psql -U postgres -d media_storage -c "\dt"
 docker-compose exec db psql -U postgres -d media_storage -c "Select count(*) from users"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from users"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from files"
+docker-compose exec db psql -U postgres -d media_storage -c "Select * from tags"
 
 
 Для отладки
@@ -50,3 +51,7 @@ docker-compose exec backend pylint src/
 Docker Secrets (Swarm) для прода
 
 CI/CD 
+
+Сейчас надо теги сделать
+А дальше уже группы
+и получение, загрузку файлов уже обратно

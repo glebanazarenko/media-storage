@@ -51,7 +51,3 @@ docker-compose exec backend pylint src/
 Docker Secrets (Swarm) для прода
 
 CI/CD 
-
-Сейчас надо теги сделать
-А дальше уже группы
-и получение, загрузку файлов уже обратно

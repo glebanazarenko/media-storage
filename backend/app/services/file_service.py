@@ -57,3 +57,4 @@ def get_file_service(file_id: str):
     file = get_file_by_id(file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
+    return file

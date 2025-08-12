@@ -25,8 +25,8 @@ app = FastAPI(
 
 # Подключение middleware CORS
 origins = [
-    "http://localhost:3000",  # frontend
-    "http://127.0.0.1:3000",
+    "http://localhost:5173",  # frontend
+    "http://127.0.0.1:5173",
 ]
 
 app.add_middleware(

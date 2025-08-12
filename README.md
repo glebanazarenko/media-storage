@@ -51,3 +51,5 @@ docker-compose exec backend pylint src/
 Docker Secrets (Swarm) для прода
 
 CI/CD 
+
+Как на дваче открывание файлов

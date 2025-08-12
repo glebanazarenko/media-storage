@@ -6,9 +6,9 @@ from fastapi import HTTPException, UploadFile
 
 from app.core.config import settings
 from app.models.base import User
-from app.repositories.file_repository import create_file, get_file_by_id
+from app.repositories.file_repository import create_file, get_file_by_id, get_filtered_files
 from app.repositories.tag_repository import get_or_create_tags
-from app.schemas.file_schemas import FileCreate
+from app.schemas.file_schemas import FileCreate, FileResponse
 
 
 def upload_file_to_s3(file: UploadFile, key: str):
@@ -58,3 +58,28 @@ def get_file_service(file_id: str):
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
     return file
+
+def get_files_list(category: str, sort_by: str, sort_order: str, page: int, limit: int, user_id: str):
+    offset = (page - 1) * limit
+    sort_field_map = {
+        "date": "created_at",
+        "name": "original_name"
+    }
+    sort_column = sort_field_map.get(sort_by, "created_at")
+    order = "desc" if sort_order == "desc" else "asc"
+
+    files, total = get_filtered_files(
+        category=category,
+        sort_column=sort_column,
+        order=order,
+        limit=limit,
+        offset=offset,
+        user_id=user_id,
+    )
+
+    return {
+        "files": [FileResponse.model_validate(f) for f in files],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }

@@ -24,3 +24,9 @@ class FileResponse(FileCreate):
 
     class Config:
         from_attributes = True
+
+class FileListResponse(BaseModel):
+    files: List[FileResponse]
+    total: int
+    page: int
+    limit: int

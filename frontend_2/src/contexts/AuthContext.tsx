@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await authAPI.test();
       if (response.data) {
         // Get full user profile
-        const userResponse = await fetch('http://localhost:8000/users/profile', {
+        const userResponse = await fetch('http://localhost:8000/auth/profile', {
           credentials: 'include'
         });
         if (userResponse.ok) {

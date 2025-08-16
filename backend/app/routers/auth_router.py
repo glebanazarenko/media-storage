@@ -54,3 +54,11 @@ from app.models.base import User
 )
 def test(current_user: User = Depends(get_current_user)):
     return current_user.username
+
+
+@router.get(
+    "/profile",
+    dependencies=[Depends(get_current_user)],
+)
+def profile(current_user: User = Depends(get_current_user)):
+    return current_user

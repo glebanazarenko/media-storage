@@ -7,6 +7,19 @@ import { FileItem } from '../types';
 import { filesAPI } from '../services/api';
 import { useApp } from '../contexts/AppContext';
 
+export interface SearchFilters {
+  category: 'all' | '0+' | '16+' | '18+';
+  tags: string[];
+  excludeTags: string[];
+  dateFrom?: string;
+  dateTo?: string;
+  fileTypes: string[];
+  minSize?: number;
+  maxSize?: number;
+  sortBy: 'date' | 'name' | 'size' | 'views' | 'downloads';
+  sortOrder: 'asc' | 'desc';
+}
+
 export const Dashboard: React.FC = () => {
   const { t } = useTranslation();
   const { searchFilters, setSearchFilters } = useApp();
@@ -20,6 +33,7 @@ export const Dashboard: React.FC = () => {
   });
 
   useEffect(() => {
+    console.log('Filters changed:', searchFilters); // Отладка
     loadFiles();
   }, [searchFilters.category, searchFilters.sortBy, searchFilters.sortOrder]);
 
@@ -35,6 +49,8 @@ export const Dashboard: React.FC = () => {
         page,
         limit: 20
       };
+
+      console.log('Sending params:', params); // Отладка
 
       const response = await filesAPI.getFiles(params);
       
@@ -96,12 +112,19 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const handleSortChange = (sortBy: string, sortOrder: 'asc' | 'desc') => {
-    setSearchFilters({
+  const handleSortChange = (sortBy: string, sortOrder?: 'asc' | 'desc') => {
+    // Если sortOrder не передан, переключаем направление
+    const newSortOrder = sortOrder || 
+      (searchFilters.sortBy === sortBy && searchFilters.sortOrder === 'asc' ? 'desc' : 'asc');
+    
+    const newFilters = {
       ...searchFilters,
       sortBy: sortBy as any,
-      sortOrder
-    });
+      sortOrder: newSortOrder
+    };
+    
+    console.log('Setting new filters:', newFilters); // Отладка
+    setSearchFilters(newFilters);
   };
 
   return (

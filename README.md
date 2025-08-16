@@ -24,6 +24,7 @@ docker-compose exec db psql -U postgres -d media_storage -c "\dt"
 docker-compose exec db psql -U postgres -d media_storage -c "Select count(*) from users"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from users"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from files"
+docker-compose exec db psql -U postgres -d media_storage -c "Select * from files WHERE created_at::date = CURRENT_DATE;"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from tags"
 
 

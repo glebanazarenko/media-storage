@@ -6,12 +6,19 @@ from fastapi import HTTPException, UploadFile
 
 from app.core.config import settings
 from app.models.base import User
-from app.repositories.file_repository import create_file, get_file_by_id, get_filtered_files
+from app.repositories.file_repository import (
+    create_file,
+    get_category_id_by_slug,
+    get_file_by_id,
+    get_filtered_files,
+)
 from app.repositories.tag_repository import get_or_create_tags
 from app.schemas.file_schemas import FileCreate, FileResponse
 
 
 def upload_file_to_s3(file: UploadFile, key: str):
+    from app.main import logger
+
     s3_client = boto3.client(
         "s3",
         endpoint_url=settings.AWS_S3_ENDPOINT_URL,
@@ -19,8 +26,10 @@ def upload_file_to_s3(file: UploadFile, key: str):
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
     )
     try:
+        logger.info("test")
         s3_client.upload_fileobj(file.file, settings.AWS_S3_BUCKET_NAME, key)
     except ClientError as e:
+        logger.info(e)
         raise HTTPException(status_code=500, detail=f"Failed to upload to S3: {e}")
 
 
@@ -29,7 +38,11 @@ def generate_key(filename: str):
 
 
 def save_file_metadata(
-    file: UploadFile, description: str | None, tag_names: str, owner: User
+    file: UploadFile,
+    description: str | None,
+    tag_names: str,
+    category_slug: str,
+    owner: User,
 ):
     key = generate_key(file.filename)
     upload_file_to_s3(file, key)
@@ -39,6 +52,7 @@ def save_file_metadata(
 
     tag_names_list = [tag.strip() for tag in tag_names.split(",") if tag.strip()]
     tag_ids = get_or_create_tags(tag_names_list)
+    category_id = get_category_id_by_slug(category_slug)
 
     file_create = FileCreate(
         original_name=file.filename,
@@ -48,6 +62,7 @@ def save_file_metadata(
         file_path=key,
         size=file.size,
         owner_id=owner.id,
+        category_id=category_id,
     )
 
     return create_file(file_create)
@@ -59,12 +74,12 @@ def get_file_service(file_id: str):
         raise HTTPException(status_code=404, detail="File not found")
     return file
 
-def get_files_list(category: str, sort_by: str, sort_order: str, page: int, limit: int, user_id: str):
+
+def get_files_list(
+    category: str, sort_by: str, sort_order: str, page: int, limit: int, user_id: str
+):
     offset = (page - 1) * limit
-    sort_field_map = {
-        "date": "created_at",
-        "name": "original_name"
-    }
+    sort_field_map = {"date": "created_at", "name": "original_name"}
     sort_column = sort_field_map.get(sort_by, "created_at")
     order = "desc" if sort_order == "desc" else "asc"
 

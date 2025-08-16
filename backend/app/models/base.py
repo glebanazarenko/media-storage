@@ -19,6 +19,21 @@ file_group = Table(
 )
 
 
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(50), unique=True, nullable=False)  # "0+", "16+", "18+"
+    slug = Column(
+        String(60), unique=True, nullable=False
+    )  # "0-plus", "16-plus", "18-plus"
+    description = Column(Text)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    # Связь с файлами
+    files = relationship("File", back_populates="category")
+
+
 class File(Base):
     __tablename__ = "files"
 
@@ -32,6 +47,7 @@ class File(Base):
     description = Column(Text)
     owner_id = Column(UUIDType(as_uuid=True), ForeignKey("users.id"), nullable=False)
     tags = Column(JSON, default=[])
+    category_id = Column(UUIDType(as_uuid=True), ForeignKey("categories.id"))
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(
         TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -39,6 +55,7 @@ class File(Base):
 
     owner = relationship("User", back_populates="files")
     groups = relationship("Group", secondary=file_group, back_populates="files")
+    category = relationship("Category", back_populates="files")
 
 
 class GroupMember(Base):

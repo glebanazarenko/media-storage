@@ -126,10 +126,10 @@ export const collectionsAPI = {
 // User endpoints
 export const usersAPI = {
   getProfile: () => 
-    api.get('/users/profile'),
+    api.get('/auth/profile'),
   
   updateProfile: (data: any) => 
-    api.patch('/users/profile', data),
+    api.patch('/auth/profile', data),
   
   getUsers: () => 
     api.get('/users/'),

@@ -13,6 +13,7 @@ class FileCreate(BaseModel):
     file_path: str
     size: int
     owner_id: UUID
+    category_id: UUID
 
 
 class FileResponse(FileCreate):
@@ -24,6 +25,7 @@ class FileResponse(FileCreate):
 
     class Config:
         from_attributes = True
+
 
 class FileListResponse(BaseModel):
     files: List[FileResponse]

@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Upload as UploadIcon, X, FileImage, FileVideo, AlertCircle } from 'lucide-react';
+import { Upload as UploadIcon, X, FileImage, FileVideo, FileAudio, FileText, FileArchive, AlertCircle } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { TagInput } from '../components/files/TagInput';
 import { filesAPI } from '../services/api';
 
+// Расширяем интерфейс, чтобы сохранить все свойства File
 interface FileWithPreview extends File {
   id: string;
   preview?: string;
+  originalFile: File; // Сохраняем оригинальный файл
 }
 
 export const Upload: React.FC = () => {
@@ -23,6 +25,98 @@ export const Upload: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Безопасная функция для получения имени файла
+  const getFileName = (file: File): string => {
+    // Проверяем, есть ли имя файла
+    if (file.name && typeof file.name === 'string' && file.name.trim() !== '') {
+      return file.name;
+    }
+    
+    // Генерируем имя с описанием
+    const timestamp = new Date().getTime();
+    const random = Math.random().toString(36).substring(2, 7);
+    return `unnamed_${timestamp}_${random}`;
+  };
+
+  // Функция для определения типа файла по расширению
+  const getFileTypeByExtension = (filename: string): string => {
+    // Проверка на существование имени файла
+    if (!filename) return 'other';
+    
+    const parts = filename.toLowerCase().split('.');
+    if (parts.length < 2) return 'other';
+    
+    const extension = parts.pop();
+    
+    if (!extension) return 'other';
+    
+    switch (extension) {
+      // Изображения
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'bmp':
+      case 'webp':
+      case 'svg':
+        return 'image';
+      
+      // Видео
+      case 'mp4':
+      case 'avi':
+      case 'mov':
+      case 'wmv':
+      case 'flv':
+      case 'webm':
+      case 'mkv':
+        return 'video';
+      
+      // Аудио
+      case 'mp3':
+      case 'wav':
+      case 'ogg':
+      case 'flac':
+      case 'aac':
+      case 'wma':
+        return 'audio';
+      
+      // Документы
+      case 'pdf':
+      case 'doc':
+      case 'docx':
+      case 'txt':
+      case 'rtf':
+        return 'document';
+      
+      // Архивы
+      case 'zip':
+      case 'rar':
+      case '7z':
+      case 'tar':
+      case 'gz':
+        return 'archive';
+      
+      default:
+        return 'other';
+    }
+  };
+
+  // Улучшенная функция определения типа файла
+  const getEnhancedFileType = (file: File): string => {
+    // Сначала пробуем определить по MIME-типу
+    if (file.type) {
+      if (file.type.startsWith('image/')) return 'image';
+      if (file.type.startsWith('video/')) return 'video';
+      if (file.type.startsWith('audio/')) return 'audio';
+      if (file.type.startsWith('text/')) return 'document';
+      if (file.type.includes('pdf')) return 'document';
+    }
+    
+    // Если MIME-тип не определен, используем расширение файла
+    const fileName = getFileName(file);
+    return getFileTypeByExtension(fileName);
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     addFiles(selectedFiles);
@@ -35,11 +129,15 @@ export const Upload: React.FC = () => {
   };
 
   const addFiles = (newFiles: File[]) => {
-    const filesWithId = newFiles.map(file => ({
-      ...file,
-      id: Math.random().toString(36).substr(2, 9),
-      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
-    }));
+    const filesWithId = newFiles.map(file => {
+      // Создаем объект, который содержит все свойства File + дополнительные поля
+      const fileWithPreview: FileWithPreview = Object.assign(file, {
+        id: Math.random().toString(36).substr(2, 9),
+        preview: getEnhancedFileType(file) === 'image' ? URL.createObjectURL(file) : undefined,
+        originalFile: file
+      });
+      return fileWithPreview;
+    });
     
     setFiles(prev => [...prev, ...filesWithId]);
   };
@@ -69,18 +167,35 @@ export const Upload: React.FC = () => {
     const maxSize = 100 * 1024 * 1024; // 100MB
     const invalidFiles = files.filter(file => file.size > maxSize);
     if (invalidFiles.length > 0) {
-      return `Files too large: ${invalidFiles.map(f => f.name).join(', ')}. Maximum size is 100MB.`;
+      return `Files too large: ${invalidFiles.map(f => getFileName(f)).join(', ')}. Maximum size is 100MB.`;
     }
 
-    const supportedTypes = ['image/', 'video/', 'audio/'];
-    const unsupportedFiles = files.filter(file => 
-      !supportedTypes.some(type => file.type.startsWith(type))
-    );
+    // Поддерживаемые типы файлов
+    const supportedTypes = ['image', 'video', 'audio', 'document', 'archive'];
+    const unsupportedFiles = files.filter(file => {
+      const fileType = getEnhancedFileType(file);
+      return !supportedTypes.includes(fileType);
+    });
+    
     if (unsupportedFiles.length > 0) {
-      return `Unsupported file types: ${unsupportedFiles.map(f => f.name).join(', ')}`;
+      return `Unsupported file types: ${unsupportedFiles.map(f => getFileName(f)).join(', ')}`;
     }
 
     return null;
+  };
+
+  // Функция для преобразования категории в slug
+  const getCategorySlug = (category: string): string => {
+    switch (category) {
+      case '0+':
+        return '0-plus';
+      case '16+':
+        return '16-plus';
+      case '18+':
+        return '18-plus';
+      default:
+        return '0-plus';
+    }
   };
 
   const handleUpload = async () => {
@@ -103,10 +218,14 @@ export const Upload: React.FC = () => {
           setUploadProgress(prev => ({ ...prev, [file.id]: 0 }));
           
           const formData = new FormData();
+          // Используем оригинальный файл для загрузки
           formData.append('file', file);
           formData.append('description', description);
           formData.append('tag_names', tags.join(','));
-          formData.append('category', category);
+          
+          // Преобразуем категорию в правильный slug
+          const categorySlug = getCategorySlug(category);
+          formData.append('category', categorySlug);
 
           await filesAPI.uploadFile(formData);
           
@@ -114,7 +233,7 @@ export const Upload: React.FC = () => {
           successCount++;
           
         } catch (error: any) {
-          console.error(`Error uploading ${file.name}:`, error);
+          console.error(`Error uploading ${getFileName(file)}:`, error);
           setUploadProgress(prev => ({ ...prev, [file.id]: -1 })); // -1 indicates error
         }
       }
@@ -154,8 +273,30 @@ export const Upload: React.FC = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const isImage = (file: File) => file.type.startsWith('image/');
-  const isVideo = (file: File) => file.type.startsWith('video/');
+  // Функции для определения типа файла
+  const isImage = (file: File) => getEnhancedFileType(file) === 'image';
+  const isVideo = (file: File) => getEnhancedFileType(file) === 'video';
+  const isAudio = (file: File) => getEnhancedFileType(file) === 'audio';
+
+  // Функция для получения иконки файла
+  const getFileIcon = (file: File) => {
+    const fileType = getEnhancedFileType(file);
+    
+    switch (fileType) {
+      case 'image':
+        return <FileImage className="w-5 h-5 text-slate-400" />;
+      case 'video':
+        return <FileVideo className="w-5 h-5 text-slate-400" />;
+      case 'audio':
+        return <FileAudio className="w-5 h-5 text-slate-400" />;
+      case 'document':
+        return <FileText className="w-5 h-5 text-slate-400" />;
+      case 'archive':
+        return <FileArchive className="w-5 h-5 text-slate-400" />;
+      default:
+        return <FileText className="w-5 h-5 text-slate-400" />;
+    }
+  };
 
   const getFileProgress = (fileId: string) => uploadProgress[fileId] || 0;
 
@@ -225,6 +366,7 @@ export const Upload: React.FC = () => {
             </h3>
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {files.map((file) => {
+                const fileName = getFileName(file);
                 const progress = getFileProgress(file.id);
                 const hasError = progress === -1;
                 
@@ -234,21 +376,17 @@ export const Upload: React.FC = () => {
                       {file.preview ? (
                         <img
                           src={file.preview}
-                          alt={file.name}
+                          alt={fileName}
                           className="w-10 h-10 rounded object-cover"
                         />
                       ) : (
                         <div className="w-10 h-10 bg-slate-700 rounded-lg flex items-center justify-center">
-                          {isVideo(file) ? (
-                            <FileVideo className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <FileImage className="w-5 h-5 text-slate-400" />
-                          )}
+                          {getFileIcon(file)}
                         </div>
                       )}
                       <div className="flex-1">
-                        <p className="text-white font-medium truncate max-w-xs" title={file.name}>
-                          {file.name}
+                        <p className="text-white font-medium truncate max-w-xs" title={fileName}>
+                          {fileName}
                         </p>
                         <p className="text-slate-400 text-sm">{formatFileSize(file.size)}</p>
                         

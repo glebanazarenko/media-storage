@@ -22,3 +22,5 @@ pydantic_settings
 python-jose[cryptography]
 alembic
 botocore
+Pillow
+opencv-python

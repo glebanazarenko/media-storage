@@ -85,6 +85,12 @@ export const filesAPI = {
   
   getFileStream: (fileId: string) => 
     api.get(`/files/${fileId}/stream`, { responseType: 'blob' }),
+
+  getThumbnail: (thumbnail_path: string) => 
+    api.get(`/files/${thumbnail_path}`),
+
+  getPreview: (preview_path: string) => 
+    api.get(`/files/preview/${preview_path}`),
 };
 
 // Tags endpoints

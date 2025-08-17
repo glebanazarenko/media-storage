@@ -25,9 +25,6 @@ def get_file_by_id(file_id: str):
 def get_filtered_files(
     category: str, sort_column: str, order: str, limit: int, offset: int, user_id: str
 ):
-    from app.main import logger
-
-    logger.info(f"Sorting by {sort_column} {order}")
     with get_db_session() as db:
         # Создаем запрос с JOIN к таблице категорий
         query = (

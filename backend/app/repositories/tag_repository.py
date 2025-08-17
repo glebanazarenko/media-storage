@@ -58,3 +58,12 @@ def get_or_create_tags(tag_names: List[str]) -> List[UUID]:
 
         db.commit()  # Коммитим все изменения
         return tag_id_strings
+
+
+def get_tag_names_by_ids(tag_ids: List[UUID]) -> List[str]:
+    with get_db_session() as db:
+        tags_names = []
+        for tag_id in tag_ids:
+            tags_name = db.query(Tag).filter(Tag.id == tag_id).first().name
+            tags_names.append(tags_name)
+        return tags_names

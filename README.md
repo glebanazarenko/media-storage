@@ -27,6 +27,8 @@ docker-compose exec db psql -U postgres -d media_storage -c "Select * from files
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from files WHERE created_at::date = CURRENT_DATE;"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from tags"
 
+docker-compose exec db psql -U postgres -d media_storage -c "Select files.thumbnail_path, files.preview_path, files.file_path from files"
+
 
 Для отладки
 

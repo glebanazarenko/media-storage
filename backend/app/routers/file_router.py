@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, Response
 
 from app.core.security import get_current_user
 from app.models.base import User
@@ -41,9 +41,6 @@ def list_files(
     limit: int = Query(20, le=100),
     current_user: User = Depends(get_current_user),
 ):
-    from app.main import logger
-
-    logger.info(sort_order)
     return get_files_list(
         category=category,
         sort_by=sort_by,
@@ -143,3 +140,25 @@ def stream_file(
     except Exception as e:
         error_msg = f"Unexpected error streaming file {file_id}: {str(e)}"
         raise HTTPException(status_code=500, detail=error_msg)
+
+
+@router.get("/thumbnail/{key}")
+async def get_thumbnail(key: str):
+    try:
+        # Получаем объект из S3
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        )
+        
+        obj = s3_client.get_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=f'uploads/{key}')
+        
+        # Возвращаем содержимое как файл
+        return Response(
+            content=obj["Body"].read(),
+            media_type="image/jpeg",  # или определяйте по Content-Type
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")

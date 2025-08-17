@@ -40,6 +40,38 @@ export const Dashboard: React.FC = () => {
   const loadFiles = async (page: number = 1) => {
     setLoading(true);
     setError(null);
+
+  const transformFileData = (file: any): FileItem => {
+    const tagsWithNames = file.tags.map((tagId: string, index: number) => ({
+      id: tagId,
+      name: file.tags_name[index] || tagId // если имя не найдено, используем ID
+    }));
+
+    const baseUrl = 'http://localhost:8000';
+
+    const thumbnailUrl = file.thumbnail_path 
+      ? `${baseUrl}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
+      : null;
+    const previewUrl = file.preview_path 
+      ? `${baseUrl}/files/thumbnail/${file.preview_path.replace('uploads/', '')}`
+      : null;
+
+    return {
+      id: file.id,
+      filename: file.original_name,
+      file_path: file.file_path,
+      mime_type: file.mime_type,
+      file_size: file.size,
+      category: file.category_id,
+      description: file.description,
+      tags: tagsWithNames,
+      created_at: file.created_at,
+      updated_at: file.updated_at,
+      thumbnail_url: thumbnailUrl,
+      preview_url: previewUrl,
+      owner_id: file.owner_id,
+    };
+  };
     
     try {
       const params = {
@@ -55,7 +87,9 @@ export const Dashboard: React.FC = () => {
       const response = await filesAPI.getFiles(params);
       
       if (response.data && response.data.files) {
-        setFiles(response.data.files);
+        const transformedFiles = response.data.files.map(transformFileData);
+        console.log(transformedFiles)
+        setFiles(transformedFiles);
         setStats({
           total: response.data.total,
           pages: response.data.pages,
@@ -172,7 +206,6 @@ export const Dashboard: React.FC = () => {
               <option value="date">Sort by Date</option>
               <option value="name">Sort by Name</option>
               <option value="size">Sort by Size</option>
-              <option value="views">Sort by Views</option>
             </select>
             
             <button

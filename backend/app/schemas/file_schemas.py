@@ -14,6 +14,7 @@ class FileCreate(BaseModel):
     size: int
     owner_id: UUID
     category_id: UUID
+    thumbnail_path: Optional[str] = None
 
 
 class FileResponse(FileCreate):
@@ -22,6 +23,7 @@ class FileResponse(FileCreate):
     preview_path: Optional[str]
     created_at: datetime
     updated_at: datetime
+    tags_name: List[str] = []
 
     class Config:
         from_attributes = True

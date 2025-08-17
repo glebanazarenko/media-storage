@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, TIMESTAMP
+from sqlalchemy import TIMESTAMP
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import UUID as UUIDType
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text, func
 from sqlalchemy.orm import relationship
@@ -46,7 +47,7 @@ class File(Base):
     preview_path = Column(Text)
     description = Column(Text)
     owner_id = Column(UUIDType(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    tags = Column(JSON, default=[])
+    tags = Column(JSONB, default=list)
     category_id = Column(UUIDType(as_uuid=True), ForeignKey("categories.id"))
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(

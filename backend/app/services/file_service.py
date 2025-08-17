@@ -12,10 +12,12 @@ from app.repositories.file_repository import (
     get_file_by_id,
     get_filtered_files,
     get_category_name_by_id,
+    search_files,
 )
 from app.repositories.tag_repository import get_or_create_tags, get_tag_names_by_ids
 from app.services.s3_service import create_image_thumbnail, create_video_thumbnail
 from app.schemas.file_schemas import FileCreate, FileResponse
+from typing import List
 
 
 def upload_file_to_s3(file: UploadFile, key: str):
@@ -63,8 +65,6 @@ def save_file_metadata(
     category_id = get_category_id_by_slug(category_slug)
 
     # Создаем превью в зависимости от типа файла
-    from app.main import logger
-    logger.info(file.content_type)
     thumbnail_key = None
     if file.content_type.startswith('image/'):
         thumbnail_key = create_image_thumbnail(file_content, file.content_type, key)
@@ -127,3 +127,45 @@ def get_files_list(
         "limit": limit,
     }
 
+
+
+def search_files_service(
+    query: str = None,
+    category: str | None = None,
+    include_tags: List[str] = None,
+    exclude_tags: List[str] = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+    page: int = 1,
+    limit: int = 20,
+    user_id: str = None,
+) -> dict:
+    """
+    Выполняет поиск файлов через репозиторий.
+    """
+    sort_field_map = {"date": "created_at", "name": "original_name", "size": "size"}
+    sort_column = sort_field_map.get(sort_by, "created_at")
+
+    files, total = search_files(
+        query=query,
+        category=category,
+        include_tags=include_tags,
+        exclude_tags=exclude_tags,
+        sort_by=sort_column,
+        sort_order=sort_order,
+        page=page,
+        limit=limit,
+        user_id=user_id,
+    )
+
+    # Добавляем метаданные (tags_name, category_name)
+    for file in files:
+        file.tags_name = get_tag_names_by_ids(file.tags)
+        file.category_name = get_category_name_by_id(file.category_id)
+
+    return {
+        "files": [FileResponse.model_validate(f) for f in files],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }

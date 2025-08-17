@@ -49,7 +49,7 @@ def create_image_thumbnail(file_content: bytes, content_type: str, key: str) -> 
             tmp_file_path = tmp_file.name
         
         # Загружаем на S3
-        thumbnail_key = f"uploads/{key.split('/')[-1]}"
+        thumbnail_key = f"uploads/{key.split('/')[-1]}.jpg"
         with open(tmp_file_path, 'rb') as f:
             upload_file_to_s3_bytes(f.read(), thumbnail_key, 'image/jpeg')
         

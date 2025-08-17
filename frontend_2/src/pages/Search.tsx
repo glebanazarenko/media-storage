@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search as SearchIcon, Filter, X } from 'lucide-react';
+import { Search as SearchIcon, Filter, X, ChevronLeft, ChevronRight, Download } from 'lucide-react'; // Добавлены недостающие иконки
 import { Layout } from '../components/layout/Layout';
 import { FileGrid } from '../components/files/FileGrid';
 import { TagInput } from '../components/files/TagInput';
 import { FileItem } from '../types';
 import { useApp } from '../contexts/AppContext';
+import { filesAPI } from '../services/api';
+
+// Импортируем FileViewerModal из отдельного файла
+import { FileViewerModal } from '../components/files/FileViewerModal'; // Импортируем из существующего компонента
 
 export const Search: React.FC = () => {
   const { t } = useTranslation();
@@ -14,47 +18,44 @@ export const Search: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [currentFileIndex, setCurrentFileIndex] = useState<number>(0);
 
-  // Mock search results
-  const mockSearchResults: FileItem[] = [
-    {
-      id: '1',
-      filename: 'mountain-landscape.jpg',
-      description: 'Stunning mountain landscape at sunrise',
-      mime_type: 'image/jpeg',
-      file_path: '/uploads/mountain.jpg',
-      file_size: 2500000,
-      category: '0+',
-      tags: [
-        { id: '1', name: 'landscape' },
-        { id: '2', name: 'mountain' },
-        { id: '3', name: 'sunrise' }
-      ],
-      created_at: '2025-01-07T08:00:00Z',
-      updated_at: '2025-01-07T08:00:00Z',
-      thumbnail_url: 'https://images.pexels.com/photos/417074/pexels-photo-417074.jpeg?auto=compress&cs=tinysrgb&w=400',
-      owner_id: '1'
-    },
-    {
-      id: '2',
-      filename: 'urban-street.jpg',
-      description: 'Street photography in urban environment',
-      mime_type: 'image/jpeg',
-      file_path: '/uploads/street.jpg',
-      file_size: 1800000,
-      category: '0+',
-      tags: [
-        { id: '4', name: 'street' },
-        { id: '5', name: 'urban' },
-        { id: '6', name: 'people' }
-      ],
-      created_at: '2025-01-06T14:30:00Z',
-      updated_at: '2025-01-06T14:30:00Z',
-      thumbnail_url: 'https://images.pexels.com/photos/1108099/pexels-photo-1108099.jpeg?auto=compress&cs=tinysrgb&w=400',
-      owner_id: '1'
-    }
-  ];
+  // Функция для преобразования данных из API в формат FileItem
+  const transformFileData = (file: any): FileItem => {
+    const tagsWithNames = file.tags.map((tagId: string, index: number) => ({
+      id: tagId,
+      name: file.tags_name[index] || tagId // если имя не найдено, используем ID
+    }));
 
+    const baseUrl = 'http://localhost:8000';
+
+    const thumbnailUrl = file.thumbnail_path 
+      ? `${baseUrl}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
+      : null;
+    const previewUrl = file.preview_path 
+      ? `${baseUrl}/files/preview/${file.preview_path.replace('uploads/', '')}`
+      : null;
+
+    return {
+      id: file.id,
+      filename: file.original_name,
+      file_path: file.file_path,
+      mime_type: file.mime_type,
+      file_size: file.size,
+      category: file.category_id,
+      category_name: file.category_name,
+      description: file.description,
+      tags: tagsWithNames,
+      created_at: file.created_at,
+      updated_at: file.updated_at,
+      thumbnail_url: thumbnailUrl,
+      preview_url: previewUrl,
+      owner_id: file.owner_id,
+    };
+  };
+
+  // Обновленный эффект: выполняем поиск при изменении любого параметра
   useEffect(() => {
     if (searchQuery.trim()) {
       performSearch();
@@ -66,30 +67,24 @@ export const Search: React.FC = () => {
   const performSearch = async () => {
     setLoading(true);
     try {
-      // Simulate API call
-      setTimeout(() => {
-        let results = mockSearchResults;
-        
-        // Filter by category
-        if (searchFilters.category !== 'all') {
-          results = results.filter(file => file.category === searchFilters.category);
-        }
-        
-        // Filter by search query
-        if (searchQuery.trim()) {
-          results = results.filter(file =>
-            file.filename.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            file.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            file.tags.some(tag => tag.name.toLowerCase().includes(searchQuery.toLowerCase()))
-          );
-        }
-        
-        setFiles(results);
-        setLoading(false);
-      }, 500);
-    } catch (error) {
+      const response = await filesAPI.searchFiles({
+        query: searchQuery,
+        category: searchFilters.category,
+        includeTags: searchFilters.tags.join(','),
+        excludeTags: searchFilters.excludeTags.join(','),
+        sortBy: searchFilters.sortBy,
+        sortOrder: searchFilters.sortOrder,
+        page: 1,
+        limit: 20,
+      });
+
+      // Преобразуем данные перед установкой в состояние
+      const transformedFiles = response.data.files.map(transformFileData);
+      setFiles(transformedFiles);
       setLoading(false);
+    } catch (error) {
       console.error('Search error:', error);
+      setLoading(false);
     }
   };
 
@@ -105,11 +100,60 @@ export const Search: React.FC = () => {
       category: 'all',
       tags: [],
       excludeTags: [],
-      fileTypes: [],
       sortBy: 'date',
       sortOrder: 'desc'
     });
     setSearchQuery('');
+  };
+
+  const handleFileView = (file: FileItem) => {
+    setSelectedFile(file);
+    // Найдем индекс файла в текущем списке
+    const index = files.findIndex(f => f.id === file.id);
+    if (index !== -1) {
+      setCurrentFileIndex(index);
+    }
+  };
+
+  const handleCloseViewer = () => {
+    setSelectedFile(null);
+  };
+
+  const handlePrevFile = () => {
+    if (currentFileIndex > 0) {
+      const newIndex = currentFileIndex - 1;
+      setCurrentFileIndex(newIndex);
+      setSelectedFile(files[newIndex]);
+    }
+  };
+
+  const handleNextFile = () => {
+    if (currentFileIndex < files.length - 1) {
+      const newIndex = currentFileIndex + 1;
+      setCurrentFileIndex(newIndex);
+      setSelectedFile(files[newIndex]);
+    }
+  };
+
+  const handleFileEdit = (file: FileItem) => {
+    // TODO: Open edit modal
+    console.log('Edit file:', file);
+  };
+
+  const handleFileDelete = async (file: FileItem) => {
+    if (window.confirm(`Are you sure you want to delete "${file.filename}"?`)) {
+      try {
+        await filesAPI.deleteFile(file.id);
+        // Обновляем список файлов после удаления
+        setFiles(prevFiles => prevFiles.filter(f => f.id !== file.id));
+        // Закрываем просмотрщик если удаляем текущий файл
+        if (selectedFile?.id === file.id) {
+          handleCloseViewer();
+        }
+      } catch (error: any) {
+        alert(error.response?.data?.message || 'Failed to delete file');
+      }
+    }
   };
 
   return (
@@ -250,7 +294,22 @@ export const Search: React.FC = () => {
         <FileGrid
           files={files}
           loading={loading}
+          onView={handleFileView}
+          onEdit={handleFileEdit}
+          onDelete={handleFileDelete}
         />
+
+        {/* File Viewer Modal */}
+        {selectedFile && (
+          <FileViewerModal
+            file={selectedFile}
+            onClose={handleCloseViewer}
+            onPrev={handlePrevFile}
+            onNext={handleNextFile}
+            hasPrev={currentFileIndex > 0}
+            hasNext={currentFileIndex < files.length - 1}
+          />
+        )}
       </div>
     </Layout>
   );

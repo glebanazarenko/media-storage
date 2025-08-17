@@ -9,6 +9,7 @@ from app.services.file_service import (
     get_file_service,
     get_files_list,
     save_file_metadata,
+    search_files_service,
 )
 
 router = APIRouter(prefix="/files", tags=["Files"])
@@ -24,12 +25,6 @@ def create_file(
 ):
     db_file = save_file_metadata(file, description, tag_names, category, current_user)
     return FileResponse.model_validate(db_file)
-
-
-@router.get("/{file_id}")
-def get_file(file_id: str):
-    file = get_file_service(file_id)
-    return FileResponse.model_validate(file)
 
 
 @router.get("/", response_model=FileListResponse)
@@ -162,3 +157,45 @@ async def get_thumbnail(key: str):
         )
     except Exception as e:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+
+@router.get("/search", response_model=FileListResponse)
+def search_files_endpoint(
+    query: str = Query(None),
+    category: str = Query("all"),
+    include_tags: str = Query("", alias="includeTags"),
+    exclude_tags: str = Query("", alias="excludeTags"),
+    sort_by: str = Query("date", alias="sortBy"),
+    sort_order: str = Query("desc", alias="sortOrder"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Поиск файлов по запросу, категориям, тегам и другим параметрам.
+    """
+
+    # Парсим теги
+    include_tags_list = [t.strip() for t in include_tags.split(",") if t.strip()]
+    exclude_tags_list = [t.strip() for t in exclude_tags.split(",") if t.strip()]
+
+    result = search_files_service(
+        query=query,
+        category=category,
+        include_tags=include_tags_list,
+        exclude_tags=exclude_tags_list,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        page=page,
+        limit=limit,
+        user_id=current_user.id,
+    )
+
+    return result
+
+
+
+@router.get("/{file_id}")
+def get_file(file_id: str):
+    file = get_file_service(file_id)
+    return FileResponse.model_validate(file)

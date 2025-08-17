@@ -4,9 +4,12 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db_session
 from app.models.base import Category
-from app.models.base import File as DBFile
+from app.models.base import File as DBFile, Tag
 from app.schemas.file_schemas import FileCreate
 from uuid import UUID
+from typing import List
+from sqlalchemy import and_, or_, not_, cast, String
+from sqlalchemy.orm import joinedload
 
 
 def create_file(file_data: FileCreate):
@@ -80,3 +83,93 @@ def get_category_name_by_id(category_id: UUID) -> str:
                     status_code=500, detail="Default category not found"
                 )
         return category.name
+
+
+def glob_to_ilike_pattern(mask: str) -> str:
+    """
+    Преобразует маску (*.mp4, a??.jpg) в шаблон для ILIKE.
+    Экранирует %, _, \. '*' -> '%', '?' -> '_'.
+    """
+    s = mask.replace("\\", "\\\\")
+    s = s.replace("%", r"\%").replace("_", r"\_")
+    s = s.replace("*", "%").replace("?", "_")
+    return s
+
+def split_masks(s: str) -> list[str]:
+    """
+    Делит строку по запятым и пробелам, убирая пустые элементы.
+    Пример: "*.mp4, *a*.jpg  b*" -> ["*.mp4", "*a*.jpg", "b*"]
+    """
+    if not s:
+        return []
+    raw = [p.strip() for chunk in s.split(",") for p in chunk.split()]
+    return [p for p in raw if p]
+
+# --- UPDATED: search_files (только блок поиска по тексту заменён) ---
+def search_files(
+    query: str = None,
+    category: str | None = None,
+    include_tags: List[str] = None,
+    exclude_tags: List[str] = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+    page: int = 1,
+    limit: int = 20,
+    user_id: str = None,
+) -> tuple[List[DBFile], int]:
+    """
+    Поиск файлов с фильтрами.
+    Поддерживает поиск по original_name, description, tag.name,
+    и поиск по маскам (*.mp4, *a*.jpg, b* и т.д.) в original_name.
+    """
+    with get_db_session() as db:
+        query_obj = (
+            db.query(DBFile)
+            .options(joinedload(DBFile.category))
+            .join(Category, DBFile.category_id == Category.id)
+            .filter(DBFile.owner_id == user_id)
+        )
+
+        if query:
+            has_glob = ("*" in query) or ("?" in query)
+            if has_glob:
+                masks = split_masks(query)
+                if masks:
+                    like_clauses = [
+                        DBFile.original_name.ilike(glob_to_ilike_pattern(m), escape="\\")
+                        for m in masks
+                    ]
+                    query_obj = query_obj.filter(and_(*like_clauses))
+            else:
+                text_filter = or_(
+                    DBFile.original_name.ilike(f"%{query}%"),
+                    DBFile.description.ilike(f"%{query}%"),
+                )
+                query_obj = query_obj.filter(text_filter)
+
+        if category != "all":
+            query_obj = query_obj.filter(Category.name == category)
+
+        if include_tags:
+            tag_objects = db.query(Tag).filter(Tag.name.in_(include_tags)).all()
+            tag_ids = [str(tag.id) for tag in tag_objects]
+            if tag_ids:
+                include_conditions = [DBFile.tags.contains([tag_id]) for tag_id in tag_ids]
+                query_obj = query_obj.filter(and_(*include_conditions))
+
+        if exclude_tags:
+            exclude_tag_objects = db.query(Tag).filter(Tag.name.in_(exclude_tags)).all()
+            exclude_tag_ids = [str(tag.id) for tag in exclude_tag_objects]
+            if exclude_tag_ids:
+                exclude_conditions = [not_(DBFile.tags.contains([tag_id])) for tag_id in exclude_tag_ids]
+                query_obj = query_obj.filter(and_(*exclude_conditions))
+
+        sort_attr = getattr(DBFile, sort_by, DBFile.created_at)
+        order_func = desc if sort_order == "desc" else asc
+        query_obj = query_obj.order_by(order_func(sort_attr))
+
+        offset = (page - 1) * limit
+        files = query_obj.offset(offset).limit(limit).all()
+        total = query_obj.count()
+
+        return files, total

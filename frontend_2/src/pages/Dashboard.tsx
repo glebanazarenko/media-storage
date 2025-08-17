@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Layout } from '../components/layout/Layout';
 import { CategoryFilter } from '../components/files/CategoryFilter';
 import { FileGrid } from '../components/files/FileGrid';
+import { FileViewerModal } from '../components/files/FileViewerModal';
 import { FileItem } from '../types';
 import { filesAPI } from '../services/api';
 import { useApp } from '../contexts/AppContext';
@@ -31,6 +32,8 @@ export const Dashboard: React.FC = () => {
     pages: 0,
     currentPage: 1
   });
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [currentFileIndex, setCurrentFileIndex] = useState<number>(0);
 
   useEffect(() => {
     console.log('Filters changed:', searchFilters); // Отладка
@@ -41,38 +44,38 @@ export const Dashboard: React.FC = () => {
     setLoading(true);
     setError(null);
 
-  const transformFileData = (file: any): FileItem => {
-    const tagsWithNames = file.tags.map((tagId: string, index: number) => ({
-      id: tagId,
-      name: file.tags_name[index] || tagId // если имя не найдено, используем ID
-    }));
+    const transformFileData = (file: any): FileItem => {
+      const tagsWithNames = file.tags.map((tagId: string, index: number) => ({
+        id: tagId,
+        name: file.tags_name[index] || tagId // если имя не найдено, используем ID
+      }));
 
-    const baseUrl = 'http://localhost:8000';
+      const baseUrl = 'http://localhost:8000';
 
-    const thumbnailUrl = file.thumbnail_path 
-      ? `${baseUrl}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
-      : null;
-    const previewUrl = file.preview_path 
-      ? `${baseUrl}/files/thumbnail/${file.preview_path.replace('uploads/', '')}`
-      : null;
+      const thumbnailUrl = file.thumbnail_path 
+        ? `${baseUrl}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
+        : null;
+      const previewUrl = file.preview_path 
+        ? `${baseUrl}/files/thumbnail/${file.preview_path.replace('uploads/', '')}`
+        : null;
 
-    return {
-      id: file.id,
-      filename: file.original_name,
-      file_path: file.file_path,
-      mime_type: file.mime_type,
-      file_size: file.size,
-      category: file.category_id,
-      category_name: file.category_name,
-      description: file.description,
-      tags: tagsWithNames,
-      created_at: file.created_at,
-      updated_at: file.updated_at,
-      thumbnail_url: thumbnailUrl,
-      preview_url: previewUrl,
-      owner_id: file.owner_id,
+      return {
+        id: file.id,
+        filename: file.original_name,
+        file_path: file.file_path,
+        mime_type: file.mime_type,
+        file_size: file.size,
+        category: file.category_id,
+        category_name: file.category_name,
+        description: file.description,
+        tags: tagsWithNames,
+        created_at: file.created_at,
+        updated_at: file.updated_at,
+        thumbnail_url: thumbnailUrl,
+        preview_url: previewUrl,
+        owner_id: file.owner_id,
+      };
     };
-  };
     
     try {
       const params = {
@@ -118,15 +121,32 @@ export const Dashboard: React.FC = () => {
     await loadFiles(1);
   };
 
-  const handleFileView = async (file: FileItem) => {
-    try {
-      // Open file in new tab or modal
-      const response = await filesAPI.getFileStream(file.id);
-      const blob = response.data;
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-    } catch (error) {
-      console.error('Error viewing file:', error);
+  const handleFileView = (file: FileItem) => {
+    setSelectedFile(file);
+    // Найдем индекс файла в текущем списке
+    const index = files.findIndex(f => f.id === file.id);
+    if (index !== -1) {
+      setCurrentFileIndex(index);
+    }
+  };
+
+  const handleCloseViewer = () => {
+    setSelectedFile(null);
+  };
+
+  const handlePrevFile = () => {
+    if (currentFileIndex > 0) {
+      const newIndex = currentFileIndex - 1;
+      setCurrentFileIndex(newIndex);
+      setSelectedFile(files[newIndex]);
+    }
+  };
+
+  const handleNextFile = () => {
+    if (currentFileIndex < files.length - 1) {
+      const newIndex = currentFileIndex + 1;
+      setCurrentFileIndex(newIndex);
+      setSelectedFile(files[newIndex]);
     }
   };
 
@@ -249,6 +269,18 @@ export const Dashboard: React.FC = () => {
               Next
             </button>
           </div>
+        )}
+
+        {/* File Viewer Modal */}
+        {selectedFile && (
+          <FileViewerModal
+            file={selectedFile}
+            onClose={handleCloseViewer}
+            onPrev={handlePrevFile}
+            onNext={handleNextFile}
+            hasPrev={currentFileIndex > 0}
+            hasNext={currentFileIndex < files.length - 1}
+          />
         )}
       </div>
     </Layout>

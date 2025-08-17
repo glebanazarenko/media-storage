@@ -91,6 +91,18 @@ export const filesAPI = {
 
   getPreview: (preview_path: string) => 
     api.get(`/files/preview/${preview_path}`),
+
+  searchFiles: (params: {
+    query?: string;
+    category?: string;
+    includeTags?: string;
+    excludeTags?: string;
+    sortBy?: string;
+    sortOrder?: string;
+    page?: number;
+    limit?: number;
+  }) => 
+    api.get<{ files: FileItem[]; total: number; page: number; limit: number }>('/files/search', { params }),
 };
 
 // Tags endpoints

@@ -26,7 +26,7 @@ export interface FileItem {
   mime_type: string;
   file_path: string;
   file_size: number;
-  category: '0+' | '16+' | '18+';
+  category_name: '0+' | '16+' | '18+';
   tags: Tag[];
   created_at: string;
   updated_at: string;

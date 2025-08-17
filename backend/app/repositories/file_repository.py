@@ -6,6 +6,7 @@ from app.core.database import get_db_session
 from app.models.base import Category
 from app.models.base import File as DBFile
 from app.schemas.file_schemas import FileCreate
+from uuid import UUID
 
 
 def create_file(file_data: FileCreate):
@@ -70,3 +71,12 @@ def get_category_id_by_slug(slug: str) -> str:
                     status_code=500, detail="Default category not found"
                 )
         return category.id
+
+def get_category_name_by_id(category_id: UUID) -> str:
+    with get_db_session() as db:
+        category = db.query(Category).filter(Category.id == category_id).first()
+        if not category:
+            raise HTTPException(
+                    status_code=500, detail="Default category not found"
+                )
+        return category.name

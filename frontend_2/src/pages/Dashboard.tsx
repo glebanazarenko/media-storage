@@ -63,6 +63,7 @@ export const Dashboard: React.FC = () => {
       mime_type: file.mime_type,
       file_size: file.size,
       category: file.category_id,
+      category_name: file.category_name,
       description: file.description,
       tags: tagsWithNames,
       created_at: file.created_at,

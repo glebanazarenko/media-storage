@@ -24,6 +24,7 @@ class FileResponse(FileCreate):
     created_at: datetime
     updated_at: datetime
     tags_name: List[str] = []
+    category_name: str
 
     class Config:
         from_attributes = True

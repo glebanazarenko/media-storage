@@ -21,7 +21,9 @@ export const FileCard: React.FC<FileCardProps> = ({
 
   const isVideo = file.mime_type.startsWith('video/');
   const isImage = file.mime_type.startsWith('image/');
-  const isAdultContent = file.category === '16+' || file.category === '18+';
+  // Проверяем, является ли файл 18+ по category_id или другому полю
+  const isAdultContent = file.category_name === '18+' || file.category_name === '16+'; // Или используйте file.category_id если он так обозначен в данных
+  // Применяем blur только если включено и контент для взрослых
   const shouldBlur = blurAdultContent && isAdultContent;
 
   const formatFileSize = (bytes: number): string => {
@@ -47,11 +49,11 @@ export const FileCard: React.FC<FileCardProps> = ({
         {/* Category Badge */}
         <div className="absolute top-2 left-2 z-10">
           <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-            file.category === '18+' ? 'bg-red-500 text-white' :
-            file.category === '16+' ? 'bg-orange-500 text-white' :
+            file.category_name === '18+' ? 'bg-red-500 text-white' :
+            file.category_name === '16+' ? 'bg-orange-500 text-white' :
             'bg-green-500 text-white'
           }`}>
-            {file.category}
+            {file.category_name}
           </span>
         </div>
 
@@ -116,6 +118,7 @@ export const FileCard: React.FC<FileCardProps> = ({
           </div>
         )}
 
+        {/* Blur Overlay для взрослого контента */}
         {shouldBlur && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
             <div className="text-center text-white">

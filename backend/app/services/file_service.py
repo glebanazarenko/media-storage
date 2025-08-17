@@ -11,6 +11,7 @@ from app.repositories.file_repository import (
     get_category_id_by_slug,
     get_file_by_id,
     get_filtered_files,
+    get_category_name_by_id,
 )
 from app.repositories.tag_repository import get_or_create_tags, get_tag_names_by_ids
 from app.services.s3_service import create_image_thumbnail, create_video_thumbnail
@@ -84,6 +85,7 @@ def save_file_metadata(
 
     db_file = create_file(file_create)
     db_file.tags_name = get_tag_names_by_ids(db_file.tags)
+    db_file.category_name = get_category_name_by_id(db_file.category_id)
 
     return db_file
 
@@ -93,6 +95,7 @@ def get_file_service(file_id: str):
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
     file.tags_name = get_tag_names_by_ids(file.tags)
+    file.category_name = get_category_name_by_id(file.category_id)
     return file
 
 
@@ -115,6 +118,7 @@ def get_files_list(
 
     for file in files:
         file.tags_name = get_tag_names_by_ids(file.tags)
+        file.category_name = get_category_name_by_id(file.category_id)
 
     return {
         "files": [FileResponse.model_validate(f) for f in files],

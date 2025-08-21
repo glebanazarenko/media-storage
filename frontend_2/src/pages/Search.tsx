@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search as SearchIcon, Filter, X, ChevronLeft, ChevronRight, Download } from 'lucide-react'; // Добавлены недостающие иконки
+import { Search as SearchIcon, Filter, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { FileGrid } from '../components/files/FileGrid';
 import { TagInput } from '../components/files/TagInput';
 import { FileItem } from '../types';
 import { useApp } from '../contexts/AppContext';
 import { filesAPI } from '../services/api';
-
-// Импортируем FileViewerModal из отдельного файла
-import { FileViewerModal } from '../components/files/FileViewerModal'; // Импортируем из существующего компонента
+import { FileViewerModal } from '../components/files/FileViewerModal';
 
 export const Search: React.FC = () => {
   const { t } = useTranslation();
@@ -20,12 +18,18 @@ export const Search: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [currentFileIndex, setCurrentFileIndex] = useState<number>(0);
+  const [stats, setStats] = useState({
+    total: 0,
+    pages: 0,
+    currentPage: 1
+  });
+  const [pageInput, setPageInput] = useState('');
 
   // Функция для преобразования данных из API в формат FileItem
   const transformFileData = (file: any): FileItem => {
     const tagsWithNames = file.tags.map((tagId: string, index: number) => ({
       id: tagId,
-      name: file.tags_name[index] || tagId // если имя не найдено, используем ID
+      name: file.tags_name[index] || tagId
     }));
 
     const baseUrl = 'http://localhost:8000';
@@ -57,15 +61,10 @@ export const Search: React.FC = () => {
 
   // Обновленный эффект: выполняем поиск при изменении любого параметра
   useEffect(() => {
-    // if (searchQuery.trim()) {
-    //   performSearch();
-    // } else {
-    //   setFiles([]);
-    // }
-    performSearch();
+    performSearch(1);
   }, [searchQuery, searchFilters]);
 
-  const performSearch = async () => {
+  const performSearch = async (page: number = 1) => {
     setLoading(true);
     try {
       const response = await filesAPI.searchFiles({
@@ -75,13 +74,25 @@ export const Search: React.FC = () => {
         excludeTags: searchFilters.excludeTags.join(','),
         sortBy: searchFilters.sortBy,
         sortOrder: searchFilters.sortOrder,
-        page: 1,
+        page,
         limit: 20,
       });
 
       // Преобразуем данные перед установкой в состояние
       const transformedFiles = response.data.files.map(transformFileData);
+      
+      // Рассчитываем количество страниц
+      const total = response.data.total;
+      const limit = 20;
+      const calculatedPages = Math.ceil(total / limit);
+      
       setFiles(transformedFiles);
+      setStats({
+        total: response.data.total,
+        pages: calculatedPages,
+        currentPage: response.data.page
+      });
+      setPageInput(response.data.page.toString());
       setLoading(false);
     } catch (error) {
       console.error('Search error:', error);
@@ -138,7 +149,7 @@ export const Search: React.FC = () => {
 
   const handleFileEdit = (file: FileItem) => {
     // TODO: Open edit modal
-    console.log('Edit file:', file);
+    console.log('File edit initiated for:', file);
   };
 
   const handleFileDelete = async (file: FileItem) => {
@@ -155,6 +166,70 @@ export const Search: React.FC = () => {
         alert(error.response?.data?.message || 'Failed to delete file');
       }
     }
+  };
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= stats.pages && page !== stats.currentPage) {
+      performSearch(page);
+    }
+  };
+
+  const handlePageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPageInput(e.target.value);
+  };
+
+  const handlePageInputSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const page = parseInt(pageInput);
+    if (!isNaN(page) && page >= 1 && page <= stats.pages) {
+      handlePageChange(page);
+    }
+  };
+
+  const renderPagination = () => {
+    if (stats.pages <= 1) return null;
+
+    return (
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={() => handlePageChange(stats.currentPage - 1)}
+          disabled={stats.currentPage <= 1 || loading}
+          className="px-3 py-1 bg-slate-800 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors text-sm"
+        >
+          Previous
+        </button>
+
+        <span className="px-3 py-1 text-slate-300 text-sm">
+          Page {stats.currentPage} of {stats.pages}
+        </span>
+
+        <button
+          onClick={() => handlePageChange(stats.currentPage + 1)}
+          disabled={stats.currentPage >= stats.pages || loading}
+          className="px-3 py-1 bg-slate-800 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors text-sm"
+        >
+          Next
+        </button>
+
+        <form onSubmit={handlePageInputSubmit} className="flex items-center space-x-2">
+          <input
+            type="number"
+            min="1"
+            max={stats.pages}
+            value={pageInput}
+            onChange={handlePageInputChange}
+            className="w-16 px-2 py-1 bg-slate-800 border border-slate-700 text-white rounded text-sm focus:outline-none focus:border-purple-500"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Go
+          </button>
+        </form>
+      </div>
+    );
   };
 
   return (
@@ -286,9 +361,14 @@ export const Search: React.FC = () => {
             <h2 className="text-xl font-semibold text-white">
               {searchQuery ? `Search Results for "${searchQuery}"` : 'Recent Files'}
             </h2>
-            <span className="text-slate-400">
-              {loading ? 'Searching...' : `${files.length} results`}
-            </span>
+            <div className="flex items-center space-x-4">
+              {stats.total > 0 && (
+                <span className="text-slate-400">
+                  {stats.total} files total
+                </span>
+              )}
+              {renderPagination()}
+            </div>
           </div>
         </div>
 
@@ -296,9 +376,20 @@ export const Search: React.FC = () => {
           files={files}
           loading={loading}
           onView={handleFileView}
-          onEdit={handleFileEdit}
+          onEdit={(editedFile) => {
+            setFiles(prevFiles => 
+              prevFiles.map(f => f.id === editedFile.id ? editedFile : f)
+            );
+          }}
           onDelete={handleFileDelete}
         />
+
+        {/* Bottom Pagination */}
+        {stats.pages > 1 && (
+          <div className="flex justify-center items-center mt-8">
+            {renderPagination()}
+          </div>
+        )}
 
         {/* File Viewer Modal */}
         {selectedFile && (

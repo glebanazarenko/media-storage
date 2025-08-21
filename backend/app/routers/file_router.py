@@ -11,6 +11,7 @@ from fastapi import (
     Request,
     Response,
     UploadFile,
+    HTTPException
 )
 
 from app.core.security import get_current_user
@@ -21,6 +22,7 @@ from app.services.file_service import (
     get_files_list,
     save_file_metadata,
     search_files_service,
+    update_file_metadata,
 )
 
 router = APIRouter(prefix="/files", tags=["Files"])
@@ -253,6 +255,149 @@ def search_files_endpoint(
     )
 
     return result
+
+
+@router.put("/{file_id}")
+def update_file(
+    file_id: str,
+    description: Optional[str] = Form(None),
+    tag_names: str = Form(""),
+    category: str = Form("0-plus"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Обновление метаданных файла
+    """
+    try:
+        updated_file = update_file_metadata(
+            file_id=file_id,
+            description=description,
+            tag_names=tag_names,
+            category=category,
+            user_id=current_user.id
+        )
+        return FileResponse.model_validate(updated_file)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{file_id}")
+def delete_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Удаление файла
+    """
+    try:
+        # Получаем файл для проверки прав доступа
+        file = get_file_service(file_id)
+        if file.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Удаляем файл из S3
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        )
+        
+        # Удаляем основной файл
+        try:
+            s3_client.delete_object(
+                Bucket=settings.AWS_S3_BUCKET_NAME,
+                Key=file.file_path
+            )
+        except ClientError as e:
+            # Логируем ошибку, но не прерываем процесс удаления
+            print(f"Failed to delete main file from S3: {str(e)}")
+        
+        # Удаляем превью, если оно существует
+        if file.preview_path:
+            try:
+                s3_client.delete_object(
+                    Bucket=settings.AWS_S3_BUCKET_NAME,
+                    Key=file.preview_path
+                )
+            except ClientError as e:
+                print(f"Failed to delete preview from S3: {str(e)}")
+        
+        # Удаляем миниатюру, если она существует
+        if file.thumbnail_path:
+            try:
+                s3_client.delete_object(
+                    Bucket=settings.AWS_S3_BUCKET_NAME,
+                    Key=file.thumbnail_path
+                )
+            except ClientError as e:
+                print(f"Failed to delete thumbnail from S3: {str(e)}")
+        
+        # Удаляем запись из базы данных
+        from app.core.database import get_db_session
+        with get_db_session() as db:
+            from app.models.base import File
+            db_file = db.query(File).filter(File.id == file_id).first()
+            if db_file:
+                db.delete(db_file)
+                db.commit()
+        
+        return {"message": "File deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+
+@router.get("/{file_id}/download")
+def download_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Скачивание оригинального файла
+    """
+    try:
+        # Получаем файл для проверки прав доступа
+        file = get_file_service(file_id)
+        if file.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        # Получаем файл из S3
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        )
+        
+        # Заголовки для скачивания файла
+        safe_filename = quote(file.original_name.encode('utf-8'))
+        
+        # Перенаправляем на прямую ссылку для скачивания или возвращаем содержимое
+        # Вариант 1: Возвращаем содержимое файла
+        try:
+            s3_response = s3_client.get_object(
+                Bucket=settings.AWS_S3_BUCKET_NAME,
+                Key=file.file_path
+            )
+            
+            headers = {
+                "Content-Disposition": f"attachment; filename*=UTF-8''{safe_filename}",
+                "Content-Length": str(file.size),
+                "Content-Type": file.mime_type or "application/octet-stream"
+            }
+            
+            return Response(
+                content=s3_response["Body"].read(),
+                headers=headers,
+                media_type=file.mime_type or "application/octet-stream"
+            )
+        except ClientError as e:
+            raise HTTPException(status_code=404, detail="File not found in storage")
+            
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+
 
 
 @router.get("/{file_id}")

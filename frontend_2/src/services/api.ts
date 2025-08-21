@@ -76,8 +76,31 @@ export const filesAPI = {
   deleteFile: (fileId: string) => 
     api.delete(`/files/${fileId}`),
   
-  updateFile: (fileId: string, data: Partial<FileItem>) => 
-    api.patch(`/files/${fileId}`, data),
+  editFile: async (id: string, data: { 
+    description?: string; 
+    category?: string; 
+    tagNames?: string; 
+  }) => {
+    const formData = new FormData();
+    
+    if (data.description !== undefined) {
+      formData.append('description', data.description || '');
+    }
+    
+    if (data.category) {
+      formData.append('category', data.category);
+    }
+    
+    if (data.tagNames) {
+      formData.append('tag_names', data.tagNames);
+    }
+
+    return api.put(`/files/${id}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
   
   downloadFile: (fileId: string) => {
     window.open(`${API_BASE_URL}/files/${fileId}/download`, '_blank');
@@ -154,6 +177,22 @@ export const usersAPI = {
   
   updateUser: (userId: string, data: any) => 
     api.patch(`/users/${userId}`, data),
+};
+
+export const backUpAPI = {
+  downloadBackup: () => {
+    return api.get('/backup/download', {
+      responseType: 'blob'
+    });
+  },
+
+  restoreBackup: (formData: FormData) => {
+    return api.post('/backup/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  }
 };
 
 export default api;

@@ -51,13 +51,18 @@ export const FileGrid: React.FC<FileGridProps> = ({
     );
   }
 
+  const handleFileEdit = (editedFile: FileItem) => {
+    // Обновляем файл в списке
+    onEdit?.(editedFile);
+  };
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
       {files.map((file) => (
         <FileCard
           key={file.id}
           file={file}
-          onEdit={onEdit}
+          onEdit={handleFileEdit}
           onDelete={onDelete}
           onView={onView}
         />

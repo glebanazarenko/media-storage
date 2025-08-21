@@ -5,6 +5,8 @@ import { Layout } from '../components/layout/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { usersAPI } from '../services/api';
+import { BackupSection } from '../components/settings/BackupSection';
+
 
 export const Settings: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -314,6 +316,10 @@ export const Settings: React.FC = () => {
               </div>
             </div>
           )}
+
+
+          {/* Data Backup & Restore */}
+          <BackupSection userId={user?.id || ''} />
         </div>
       </div>
     </Layout>

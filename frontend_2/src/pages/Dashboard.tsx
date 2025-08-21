@@ -154,7 +154,7 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleFileEdit = (file: FileItem) => {
-    console.log('Edit file:', file);
+    console.log('File edit initiated for:', file);
   };
 
   const handleFileDelete = async (file: FileItem) => {
@@ -309,7 +309,11 @@ export const Dashboard: React.FC = () => {
           files={files}
           loading={loading}
           onView={handleFileView}
-          onEdit={handleFileEdit}
+          onEdit={(editedFile) => {
+            setFiles(prevFiles => 
+              prevFiles.map(f => f.id === editedFile.id ? editedFile : f)
+            );
+          }}
           onDelete={handleFileDelete}
         />
 

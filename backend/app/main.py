@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 # from app.models.base import Base  # Если у тебя есть base.py с Base = declarative_base()
 from app.core.config import settings
 from app.core.database import get_db_session
-from app.routers import auth_router, file_router, group_router, tag_router
+from app.routers import auth_router, file_router, group_router, tag_router, backup_router
 
 # Глобальная настройка логирования
 logging.basicConfig(
@@ -42,6 +42,7 @@ app.include_router(auth_router.router)
 app.include_router(file_router.router)
 app.include_router(group_router.router)
 app.include_router(tag_router.router)
+app.include_router(backup_router.router)
 
 
 # Опционально: зависимость БД по умолчанию

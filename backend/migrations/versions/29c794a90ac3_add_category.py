@@ -49,21 +49,21 @@ def upgrade() -> None:
     
     op.bulk_insert(categories_table, [
         {
-            'id': uuid.uuid4(),
+            'id': '4b681b59-6521-48f2-aa24-f4677874be5c',
             'name': '0+',
             'slug': '0-plus',
             'description': 'Content suitable for all ages',
             'created_at': datetime.utcnow()
         },
         {
-            'id': uuid.uuid4(),
+            'id': '188c209c-a486-4df9-9094-73160dfaa25d',
             'name': '16+',
             'slug': '16-plus',
             'description': 'Content suitable for ages 16 and above',
             'created_at': datetime.utcnow()
         },
         {
-            'id': uuid.uuid4(),
+            'id': 'f3aeb8c5-7c00-452a-84af-cd8c1fef4993',
             'name': '18+',
             'slug': '18-plus',
             'description': 'Content suitable for ages 18 and above',

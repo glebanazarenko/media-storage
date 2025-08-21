@@ -169,3 +169,58 @@ def search_files_service(
         "page": page,
         "limit": limit,
     }
+
+
+def update_file_metadata(
+    file_id: str,
+    description: str | None,
+    tag_names: str,
+    category: str,
+    user_id: str,
+):
+    """
+    Обновление метаданных файла
+    """
+
+    from app.models.base import File
+    from app.core.database import get_db_session
+    from datetime import datetime, timezone
+    
+    with get_db_session() as db:
+        try:
+            # Получаем файл
+            db_file = db.query(File).filter(File.id == file_id, File.owner_id == user_id).first()
+            if not db_file:
+                raise Exception("File not found or access denied")
+            
+            # Обновляем описание
+            if description is not None:
+                db_file.description = description
+            
+            # Обновляем категорию
+            category_mapping = {
+                "0+": "0-plus",
+                "16+": "16-plus", 
+                "18+": "18-plus"
+            }
+            db_file.category_id = get_category_id_by_slug(category_mapping.get(category, "0-plus"))
+            
+            # Обновляем теги
+            if tag_names:
+                tag_name_list = [name.strip() for name in tag_names.split(",") if name.strip()]
+                tag_name_list = list(set(tag_name_list))
+                db_file.tags = get_or_create_tags(tag_name_list)
+
+            db_file.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(db_file)
+
+            db_file.tags_name = get_tag_names_by_ids(db_file.tags)
+            db_file.category_name = get_category_name_by_id(db_file.category_id)
+            
+            return db_file
+        except Exception as e:
+            db.rollback()
+            raise e
+        finally:
+            db.close()

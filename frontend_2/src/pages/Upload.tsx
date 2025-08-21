@@ -164,10 +164,10 @@ export const Upload: React.FC = () => {
       return 'Please select at least one file';
     }
 
-    const maxSize = 1000 * 1024 * 1024; // 1000MB
+    const maxSize = 10000 * 1024 * 1024; // 10000MB
     const invalidFiles = files.filter(file => file.size > maxSize);
     if (invalidFiles.length > 0) {
-      return `Files too large: ${invalidFiles.map(f => getFileName(f)).join(', ')}. Maximum size is 1000MB.`;
+      return `Files too large: ${invalidFiles.map(f => getFileName(f)).join(', ')}. Maximum size is 10000MB.`;
     }
 
     // Поддерживаемые типы файлов
@@ -337,7 +337,7 @@ export const Upload: React.FC = () => {
             Drop files here or click to browse
           </h3>
           <p className="text-slate-400 mb-4">
-            Support for images, videos and audio files (max 100MB each)
+            Support for images, videos and audio files (max 10GB each)
           </p>
           <input
             type="file"

@@ -1,4 +1,5 @@
 import uuid
+from typing import List
 
 import boto3
 from botocore.exceptions import ClientError
@@ -9,15 +10,14 @@ from app.models.base import User
 from app.repositories.file_repository import (
     create_file,
     get_category_id_by_slug,
+    get_category_name_by_id,
     get_file_by_id,
     get_filtered_files,
-    get_category_name_by_id,
     search_files,
 )
 from app.repositories.tag_repository import get_or_create_tags, get_tag_names_by_ids
-from app.services.s3_service import create_image_thumbnail, create_video_thumbnail
 from app.schemas.file_schemas import FileCreate, FileResponse
-from typing import List
+from app.services.s3_service import create_image_thumbnail, create_video_thumbnail
 
 
 def upload_file_to_s3(file: UploadFile, key: str):
@@ -49,11 +49,11 @@ def save_file_metadata(
     owner: User,
 ):
     key = generate_key(file.filename)
-    
+
     # Читаем содержимое файла до загрузки
     file_content = file.file.read()
     file.file.seek(0)  # Сбрасываем указатель файла
-    
+
     # Загружаем файл на S3
     upload_file_to_s3(file, key)
 
@@ -61,14 +61,15 @@ def save_file_metadata(
         raise HTTPException(status_code=401, detail=f"Do not authorized")
 
     tag_names_list = [tag.strip() for tag in tag_names.split(",") if tag.strip()]
+    tag_names_list = list(set(tag_names_list))
     tag_ids = get_or_create_tags(tag_names_list)
     category_id = get_category_id_by_slug(category_slug)
 
     # Создаем превью в зависимости от типа файла
     thumbnail_key = None
-    if file.content_type.startswith('image/'):
+    if file.content_type.startswith("image/"):
         thumbnail_key = create_image_thumbnail(file_content, file.content_type, key)
-    elif file.content_type.startswith('video/'):
+    elif file.content_type.startswith("video/"):
         thumbnail_key = create_video_thumbnail(file_content, key)
 
     file_create = FileCreate(
@@ -126,7 +127,6 @@ def get_files_list(
         "page": page,
         "limit": limit,
     }
-
 
 
 def search_files_service(

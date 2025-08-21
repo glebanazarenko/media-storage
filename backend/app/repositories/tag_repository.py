@@ -2,10 +2,11 @@ import re
 from typing import List
 from uuid import UUID
 
+from sqlalchemy import String, and_, cast, func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db_session
-from app.models.base import Tag
+from app.models.base import File, Tag
 
 
 def slugify(text: str) -> str:
@@ -67,3 +68,31 @@ def get_tag_names_by_ids(tag_ids: List[UUID]) -> List[str]:
             tags_name = db.query(Tag).filter(Tag.id == tag_id).first().name
             tags_names.append(tags_name)
         return tags_names
+
+
+def search_tags(query: str, limit: int, user_id: UUID) -> List[Tag]:
+    """
+    Search for tags that are used in files owned by the specified user.
+    """
+    with get_db_session() as db:
+        # Сначала получаем все файлы пользователя и собираем уникальные теги
+        user_files = db.query(File).filter(File.owner_id == user_id).all()
+
+        # Собираем все уникальные tag_id из файлов пользователя
+        all_tag_ids = set()
+        for file in user_files:
+            if file.tags:
+                all_tag_ids.update(file.tags)
+
+        if not all_tag_ids:
+            return []
+
+        # Ищем теги по собранным ID и имени
+        query_obj = (
+            db.query(Tag)
+            .filter(and_(Tag.id.in_(all_tag_ids), Tag.name.ilike(f"%{query}%")))
+            .order_by(Tag.name)
+            .limit(limit)
+        )
+
+        return query_obj.all()

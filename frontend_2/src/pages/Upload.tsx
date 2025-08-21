@@ -164,10 +164,10 @@ export const Upload: React.FC = () => {
       return 'Please select at least one file';
     }
 
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    const maxSize = 1000 * 1024 * 1024; // 1000MB
     const invalidFiles = files.filter(file => file.size > maxSize);
     if (invalidFiles.length > 0) {
-      return `Files too large: ${invalidFiles.map(f => getFileName(f)).join(', ')}. Maximum size is 100MB.`;
+      return `Files too large: ${invalidFiles.map(f => getFileName(f)).join(', ')}. Maximum size is 1000MB.`;
     }
 
     // Поддерживаемые типы файлов

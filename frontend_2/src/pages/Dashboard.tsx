@@ -34,9 +34,9 @@ export const Dashboard: React.FC = () => {
   });
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [currentFileIndex, setCurrentFileIndex] = useState<number>(0);
+  const [pageInput, setPageInput] = useState('');
 
   useEffect(() => {
-    console.log('Filters changed:', searchFilters); // Отладка
     loadFiles();
   }, [searchFilters.category, searchFilters.sortBy, searchFilters.sortOrder]);
 
@@ -47,7 +47,7 @@ export const Dashboard: React.FC = () => {
     const transformFileData = (file: any): FileItem => {
       const tagsWithNames = file.tags.map((tagId: string, index: number) => ({
         id: tagId,
-        name: file.tags_name[index] || tagId // если имя не найдено, используем ID
+        name: file.tags_name[index] || tagId
       }));
 
       const baseUrl = 'http://localhost:8000';
@@ -86,22 +86,27 @@ export const Dashboard: React.FC = () => {
         limit: 20
       };
 
-      console.log('Sending params:', params); // Отладка
-
       const response = await filesAPI.getFiles(params);
       
       if (response.data && response.data.files) {
         const transformedFiles = response.data.files.map(transformFileData);
-        console.log(transformedFiles)
+        
+        // Рассчитываем количество страниц самостоятельно
+        const total = response.data.total;
+        const limit = 20;
+        const calculatedPages = Math.ceil(total / limit);
+        
         setFiles(transformedFiles);
         setStats({
           total: response.data.total,
-          pages: response.data.pages,
+          pages: calculatedPages,
           currentPage: response.data.page
         });
+        setPageInput(response.data.page.toString());
       } else {
         setFiles([]);
         setStats({ total: 0, pages: 0, currentPage: 1 });
+        setPageInput('1');
       }
     } catch (error: any) {
       console.error('Error loading files:', error);
@@ -118,12 +123,10 @@ export const Dashboard: React.FC = () => {
       category,
     };
     setSearchFilters(newFilters);
-    await loadFiles(1);
   };
 
   const handleFileView = (file: FileItem) => {
     setSelectedFile(file);
-    // Найдем индекс файла в текущем списке
     const index = files.findIndex(f => f.id === file.id);
     if (index !== -1) {
       setCurrentFileIndex(index);
@@ -151,7 +154,6 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleFileEdit = (file: FileItem) => {
-    // TODO: Open edit modal
     console.log('Edit file:', file);
   };
 
@@ -159,7 +161,6 @@ export const Dashboard: React.FC = () => {
     if (window.confirm(`Are you sure you want to delete "${file.filename}"?`)) {
       try {
         await filesAPI.deleteFile(file.id);
-        // Reload files
         await loadFiles(stats.currentPage);
       } catch (error: any) {
         alert(error.response?.data?.message || 'Failed to delete file');
@@ -168,7 +169,6 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleSortChange = (sortBy: string, sortOrder?: 'asc' | 'desc') => {
-    // Если sortOrder не передан, переключаем направление
     const newSortOrder = sortOrder || 
       (searchFilters.sortBy === sortBy && searchFilters.sortOrder === 'asc' ? 'desc' : 'asc');
     
@@ -178,8 +178,71 @@ export const Dashboard: React.FC = () => {
       sortOrder: newSortOrder
     };
     
-    console.log('Setting new filters:', newFilters); // Отладка
     setSearchFilters(newFilters);
+  };
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= stats.pages && page !== stats.currentPage) {
+      loadFiles(page);
+    }
+  };
+
+  const handlePageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPageInput(e.target.value);
+  };
+
+  const handlePageInputSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const page = parseInt(pageInput);
+    if (!isNaN(page) && page >= 1 && page <= stats.pages) {
+      handlePageChange(page);
+    }
+  };
+
+  const renderPagination = () => {
+    if (stats.pages <= 1) return null;
+
+    return (
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={() => handlePageChange(stats.currentPage - 1)}
+          disabled={stats.currentPage <= 1 || loading}
+          className="px-3 py-1 bg-slate-800 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors text-sm"
+        >
+          Previous
+        </button>
+
+        <span className="px-3 py-1 text-slate-300 text-sm">
+          Page {stats.currentPage} of {stats.pages}
+        </span>
+
+        <button
+          onClick={() => handlePageChange(stats.currentPage + 1)}
+          disabled={stats.currentPage >= stats.pages || loading}
+          className="px-3 py-1 bg-slate-800 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors text-sm"
+        >
+          Next
+        </button>
+
+        <form onSubmit={handlePageInputSubmit} className="flex items-center space-x-2">
+          <input
+            type="number"
+            min="1"
+            max={stats.pages}
+            value={pageInput}
+            onChange={handlePageInputChange}
+            className="w-16 px-2 py-1 bg-slate-800 border border-slate-700 text-white rounded text-sm focus:outline-none focus:border-purple-500"
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Go
+          </button>
+        </form>
+      </div>
+    );
   };
 
   return (
@@ -205,7 +268,7 @@ export const Dashboard: React.FC = () => {
           loading={loading}
         />
 
-        {/* Sort Controls */}
+        {/* Sort Controls and Top Pagination */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-4">
             <h2 className="text-xl font-semibold text-white">
@@ -218,23 +281,27 @@ export const Dashboard: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center space-x-3">
-            <select
-              value={searchFilters.sortBy}
-              onChange={(e) => handleSortChange(e.target.value, searchFilters.sortOrder)}
-              className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-purple-500"
-            >
-              <option value="date">Sort by Date</option>
-              <option value="name">Sort by Name</option>
-              <option value="size">Sort by Size</option>
-            </select>
+          <div className="flex items-center space-x-4">
+            {renderPagination()}
             
-            <button
-              onClick={() => handleSortChange(searchFilters.sortBy, searchFilters.sortOrder === 'asc' ? 'desc' : 'asc')}
-              className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700 transition-colors"
-            >
-              {searchFilters.sortOrder === 'asc' ? '↑ ASC' : '↓ DESC'}
-            </button>
+            <div className="flex items-center space-x-3">
+              <select
+                value={searchFilters.sortBy}
+                onChange={(e) => handleSortChange(e.target.value, searchFilters.sortOrder)}
+                className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-purple-500"
+              >
+                <option value="date">Sort by Date</option>
+                <option value="name">Sort by Name</option>
+                <option value="size">Sort by Size</option>
+              </select>
+              
+              <button
+                onClick={() => handleSortChange(searchFilters.sortBy, searchFilters.sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700 transition-colors"
+              >
+                {searchFilters.sortOrder === 'asc' ? '↑ ASC' : '↓ DESC'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -246,28 +313,10 @@ export const Dashboard: React.FC = () => {
           onDelete={handleFileDelete}
         />
 
-        {/* Pagination */}
+        {/* Bottom Pagination */}
         {stats.pages > 1 && (
-          <div className="flex justify-center items-center space-x-2 mt-8">
-            <button
-              onClick={() => loadFiles(stats.currentPage - 1)}
-              disabled={stats.currentPage <= 1 || loading}
-              className="px-4 py-2 bg-slate-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors"
-            >
-              Previous
-            </button>
-            
-            <span className="text-slate-400">
-              Page {stats.currentPage} of {stats.pages}
-            </span>
-            
-            <button
-              onClick={() => loadFiles(stats.currentPage + 1)}
-              disabled={stats.currentPage >= stats.pages || loading}
-              className="px-4 py-2 bg-slate-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors"
-            >
-              Next
-            </button>
+          <div className="flex justify-center items-center mt-8">
+            {renderPagination()}
           </div>
         )}
 

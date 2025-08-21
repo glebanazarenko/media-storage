@@ -57,11 +57,12 @@ export const Search: React.FC = () => {
 
   // Обновленный эффект: выполняем поиск при изменении любого параметра
   useEffect(() => {
-    if (searchQuery.trim()) {
-      performSearch();
-    } else {
-      setFiles([]);
-    }
+    // if (searchQuery.trim()) {
+    //   performSearch();
+    // } else {
+    //   setFiles([]);
+    // }
+    performSearch();
   }, [searchQuery, searchFilters]);
 
   const performSearch = async () => {

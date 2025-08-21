@@ -1,20 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-# from app.schemas.tag import TagCreate, TagResponse
-from app.models.base import Tag
+from app.core.security import get_current_user
+from app.models.base import Tag, User
+from app.schemas.tag_schemas import TagResponse
+from app.services.tag_service import search_tags_service
 
 router = APIRouter(prefix="/tags", tags=["Tags"])
 
-# @router.post("/")
-# def create_tag(tag: TagCreate, db: Session = Depends(get_db)):
-#     db_tag = Tag(**tag.model_dump())
-#     db.add(db_tag)
-#     db.commit()
-#     db.refresh(db_tag)
-#     return TagResponse.model_validate(db_tag)
 
-# @router.get("/")
-# def list_tags(db: Session = Depends(get_db)):
-#     tags = db.query(Tag).all()
-#     return [TagResponse.model_validate(tag) for tag in tags]
+@router.get("/search", response_model=List[TagResponse])
+def search_tags(
+    q: str = Query(..., min_length=1, description="Search query for tag names"),
+    limit: int = Query(10, ge=1, le=100, description="Maximum number of results"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Search for tags by name for the current user's files.
+
+    - **q**: Search query (required)
+    - **limit**: Number of results to return (default: 10, min: 1, max: 100)
+    """
+    return search_tags_service(q, limit, current_user.id)

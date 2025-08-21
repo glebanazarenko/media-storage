@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import TIMESTAMP
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import UUID as UUIDType
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base

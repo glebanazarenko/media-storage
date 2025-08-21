@@ -1,6 +1,17 @@
+import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 
 from app.core.security import get_current_user
 from app.models.base import User
@@ -59,6 +70,8 @@ from app.core.config import settings
 @router.get("/{file_id}/stream")
 def stream_file(
     file_id: str,
+    request: Request,
+    range_header: str = Header(None),
     current_user: User = Depends(get_current_user),
 ):
     try:
@@ -77,31 +90,68 @@ def stream_file(
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
         )
 
-        # Получаем объект из S3
-        s3_response = s3_client.get_object(
-            Bucket=settings.AWS_S3_BUCKET_NAME, Key=file.file_path
-        )
+        # Получаем размер файла из S3
+        try:
+            file_head = s3_client.head_object(
+                Bucket=settings.AWS_S3_BUCKET_NAME, Key=file.file_path
+            )
+            file_size = file_head.get("ContentLength", file.size)
+        except:
+            file_size = file.size
+
+        # Обработка Range запросов
+        start, end = 0, file_size - 1
+        status_code = 200
+        headers = {}
+        s3_range = None
+
+        if range_header:
+            # Парсим Range заголовок (например, "bytes=0-1023")
+            range_match = re.match(r"bytes=(\d*)-(\d*)", range_header)
+            if range_match:
+                start_str, end_str = range_match.groups()
+                start = int(start_str) if start_str else 0
+                end = int(end_str) if end_str else file_size - 1
+                end = min(end, file_size - 1)
+
+                if start >= file_size:
+                    raise HTTPException(
+                        status_code=416, detail="Requested Range Not Satisfiable"
+                    )
+
+                status_code = 206
+                headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+                s3_range = f"bytes={start}-{end}"
+
+        # Запрашиваем файл из S3 (с Range или без)
+        s3_params = {"Bucket": settings.AWS_S3_BUCKET_NAME, "Key": file.file_path}
+
+        if s3_range:
+            s3_params["Range"] = s3_range
+
+        s3_response = s3_client.get_object(**s3_params)
 
         # Создаем генератор для стриминга
         def iter_file():
             try:
-                # Проверяем, есть ли iter_chunks
-                if hasattr(s3_response["Body"], "iter_chunks"):
-                    for chunk in s3_response["Body"].iter_chunks(chunk_size=8192):
-                        yield chunk
-                else:
-                    # Альтернативный метод - читаем по частям
-                    while True:
-                        chunk = s3_response["Body"].read(8192)
-                        if not chunk:
-                            break
-                        yield chunk
+                # Читаем по частям
+                chunk_size = 8192
+                content_length = end - start + 1
+                bytes_read = 0
+
+                while bytes_read < content_length:
+                    read_size = min(chunk_size, content_length - bytes_read)
+                    chunk = s3_response["Body"].read(read_size)
+                    if not chunk:
+                        break
+                    bytes_read += len(chunk)
+                    yield chunk
             except Exception as e:
                 raise
             finally:
                 try:
                     s3_response["Body"].close()
-                except Exception as e:
+                except:
                     pass
 
         # Определяем MIME-type
@@ -112,27 +162,36 @@ def stream_file(
         )
 
         # Правильно кодируем имя файла для заголовка
-        # Используем URL encoding для имени файла
         safe_filename = quote(file.original_name.encode("utf-8"))
         content_disposition = f"inline; filename*=UTF-8''{safe_filename}"
 
-        return StreamingResponse(
-            iter_file(),
-            media_type=mime_type,
-            headers={
+        # Добавляем заголовки
+        headers.update(
+            {
                 "Content-Disposition": content_disposition,
+                "Content-Length": str(end - start + 1),
                 "Accept-Ranges": "bytes",
                 "Cache-Control": "public, max-age=3600",
-            },
+            }
+        )
+
+        return StreamingResponse(
+            iter_file(),
+            status_code=status_code,
+            media_type=mime_type,
+            headers=headers,
         )
 
     except ClientError as e:
+        print(e)
         error_msg = f"S3 Client Error for file {file_id}: {str(e)}"
         raise HTTPException(status_code=500, detail=error_msg)
-    except HTTPException:
+    except HTTPException as e:
+        print(e)
         # Пробрасываем HTTP исключения без изменений
         raise
     except Exception as e:
+        print(e)
         error_msg = f"Unexpected error streaming file {file_id}: {str(e)}"
         raise HTTPException(status_code=500, detail=error_msg)
 
@@ -147,9 +206,11 @@ async def get_thumbnail(key: str):
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
         )
-        
-        obj = s3_client.get_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=f'uploads/{key}')
-        
+
+        obj = s3_client.get_object(
+            Bucket=settings.AWS_S3_BUCKET_NAME, Key=f"uploads/{key}"
+        )
+
         # Возвращаем содержимое как файл
         return Response(
             content=obj["Body"].read(),
@@ -192,7 +253,6 @@ def search_files_endpoint(
     )
 
     return result
-
 
 
 @router.get("/{file_id}")

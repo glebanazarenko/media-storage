@@ -1,15 +1,15 @@
+from typing import List
+from uuid import UUID
+
 from fastapi import HTTPException
-from sqlalchemy import asc, desc
-from sqlalchemy.orm import Session
+from sqlalchemy import String, and_, asc, cast, desc, not_, or_
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db_session
 from app.models.base import Category
-from app.models.base import File as DBFile, Tag
+from app.models.base import File as DBFile
+from app.models.base import Tag
 from app.schemas.file_schemas import FileCreate
-from uuid import UUID
-from typing import List
-from sqlalchemy import and_, or_, not_, cast, String
-from sqlalchemy.orm import joinedload
 
 
 def create_file(file_data: FileCreate):
@@ -75,13 +75,12 @@ def get_category_id_by_slug(slug: str) -> str:
                 )
         return category.id
 
+
 def get_category_name_by_id(category_id: UUID) -> str:
     with get_db_session() as db:
         category = db.query(Category).filter(Category.id == category_id).first()
         if not category:
-            raise HTTPException(
-                    status_code=500, detail="Default category not found"
-                )
+            raise HTTPException(status_code=500, detail="Default category not found")
         return category.name
 
 
@@ -95,6 +94,7 @@ def glob_to_ilike_pattern(mask: str) -> str:
     s = s.replace("*", "%").replace("?", "_")
     return s
 
+
 def split_masks(s: str) -> list[str]:
     """
     Делит строку по запятым и пробелам, убирая пустые элементы.
@@ -104,6 +104,7 @@ def split_masks(s: str) -> list[str]:
         return []
     raw = [p.strip() for chunk in s.split(",") for p in chunk.split()]
     return [p for p in raw if p]
+
 
 # --- UPDATED: search_files (только блок поиска по тексту заменён) ---
 def search_files(
@@ -136,7 +137,9 @@ def search_files(
                 masks = split_masks(query)
                 if masks:
                     like_clauses = [
-                        DBFile.original_name.ilike(glob_to_ilike_pattern(m), escape="\\")
+                        DBFile.original_name.ilike(
+                            glob_to_ilike_pattern(m), escape="\\"
+                        )
                         for m in masks
                     ]
                     query_obj = query_obj.filter(and_(*like_clauses))
@@ -154,14 +157,18 @@ def search_files(
             tag_objects = db.query(Tag).filter(Tag.name.in_(include_tags)).all()
             tag_ids = [str(tag.id) for tag in tag_objects]
             if tag_ids:
-                include_conditions = [DBFile.tags.contains([tag_id]) for tag_id in tag_ids]
+                include_conditions = [
+                    DBFile.tags.contains([tag_id]) for tag_id in tag_ids
+                ]
                 query_obj = query_obj.filter(and_(*include_conditions))
 
         if exclude_tags:
             exclude_tag_objects = db.query(Tag).filter(Tag.name.in_(exclude_tags)).all()
             exclude_tag_ids = [str(tag.id) for tag in exclude_tag_objects]
             if exclude_tag_ids:
-                exclude_conditions = [not_(DBFile.tags.contains([tag_id])) for tag_id in exclude_tag_ids]
+                exclude_conditions = [
+                    not_(DBFile.tags.contains([tag_id])) for tag_id in exclude_tag_ids
+                ]
                 query_obj = query_obj.filter(and_(*exclude_conditions))
 
         sort_attr = getattr(DBFile, sort_by, DBFile.created_at)

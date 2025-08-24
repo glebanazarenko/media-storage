@@ -21,7 +21,7 @@ from app.repositories.file_repository import (
 from app.repositories.s3_repository import upload_file_to_s3
 from app.repositories.tag_repository import get_or_create_tags, get_tag_names_by_ids
 from app.schemas.file_schemas import FileCreate, FileResponse
-from app.services.s3_service import create_image_thumbnail, create_video_thumbnail
+from app.services.s3_service import create_thumbnail_from_s3
 
 SORT_FIELD_MAP = {"date": "created_at", "name": "original_name", "size": "size"}
 
@@ -37,29 +37,29 @@ def save_file_metadata(
     category_slug: str,
     owner: User,
 ) -> FileResponse:
-    key = generate_key(file.filename)
-
-    # Читаем содержимое файла до загрузки
-    file_content = file.file.read()
-    file.file.seek(0)  # Сбрасываем указатель файла
-
-    # Загружаем файл на S3
-    upload_file_to_s3(file, key)
-
     if not owner:
-        raise HTTPException(status_code=401, detail=f"Do not authorized")
+        raise HTTPException(status_code=401, detail="Not authorized")
+
+    key = generate_key(file.filename)
+    file.file.seek(0)
+
+    # Загружаем файл на S3 ПЕРЕД обработкой
+    upload_file_to_s3(file, key)
+    
+    # Перемещаем указатель в начало для повторного чтения (если нужно)
 
     tag_names_list = [tag.strip() for tag in tag_names.split(",") if tag.strip()]
     tag_names_list = list(set(tag_names_list))
     tag_ids = get_or_create_tags(tag_names_list)
     category_id = get_category_id_by_slug(category_slug)
 
-    # Создаем превью в зависимости от типа файла
     thumbnail_key = None
-    if file.content_type.startswith("image/"):
-        thumbnail_key = create_image_thumbnail(file_content, file.content_type, key)
-    elif file.content_type.startswith("video/"):
-        thumbnail_key = create_video_thumbnail(file_content, key)
+    # Для создания превью скачайте файл с S3 или используйте отдельный поток
+    if file.content_type.startswith("image/") or file.content_type.startswith("video/"):
+        # Создайте превью отдельно, не загружая весь файл в память
+        thumbnail_key = create_thumbnail_from_s3(key, file.content_type)
+
+    print(thumbnail_key)
 
     file_create = FileCreate(
         original_name=file.filename,
@@ -73,9 +73,9 @@ def save_file_metadata(
         thumbnail_path=thumbnail_key,
     )
 
-    file = create_file(file_create)
-    file = FileMetadataService.enrich_file_metadata(file)
-    return FileResponse.model_validate(file)
+    file_record = create_file(file_create)
+    file_record = FileMetadataService.enrich_file_metadata(file_record)
+    return FileResponse.model_validate(file_record)
 
 
 def get_file_service(file_id: str):

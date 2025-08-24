@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import TIMESTAMP
 from sqlalchemy import UUID as UUIDType
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text, func
+from sqlalchemy import Boolean, Column, ForeignKey, BigInteger, String, Table, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -41,7 +41,7 @@ class File(Base):
     original_name = Column(String(255), nullable=False)
     mime_type = Column(String(100), nullable=False)
     file_path = Column(Text, nullable=False)
-    size = Column(Integer, nullable=False)
+    size = Column(BigInteger, nullable=False)
     thumbnail_path = Column(Text)
     preview_path = Column(Text)
     description = Column(Text)

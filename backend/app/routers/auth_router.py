@@ -7,6 +7,7 @@ from app.core.security import get_current_user
 from app.models.base import User
 from app.schemas.user_schemas import UserCreate, UserLogin, UserResponse
 from app.services.auth_service import authenticate_user, register_new_user
+from app.core.config import settings
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -21,8 +22,8 @@ def login(form_data: UserLogin):
         "Authorization",
         value=f"Bearer {token}",
         httponly=True,
-        max_age=1800,
-        expires=1800,
+        max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES*60,
+        expires=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES*60,
         samesite="None" if settings.IS_PRODUCTION else "Lax",
         secure=settings.IS_PRODUCTION,
     )

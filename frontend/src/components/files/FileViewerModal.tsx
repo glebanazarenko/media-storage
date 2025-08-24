@@ -35,6 +35,10 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
 
+  // Touch события для мобильных устройств
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number; distance: number } | null>(null);
+  const [touchPanOffset, setTouchPanOffset] = useState({ x: 0, y: 0 });
+
   // Для видео
   const [videoZoom, setVideoZoom] = useState(1);
   const [videoPanOffset, setVideoPanOffset] = useState({ x: 0, y: 0 });
@@ -61,6 +65,14 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const truncateText = (text: string, maxLength: number) => {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Читаем размеры медиа (нативные)
@@ -213,6 +225,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     setZoom(1);
     setRotation(0);
     setPanOffset({ x: 0, y: 0 });
+    setTouchPanOffset({ x: 0, y: 0 });
     setVideoZoom(1);
     setVideoPanOffset({ x: 0, y: 0 });
     setVideoRotation(0);
@@ -247,6 +260,74 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     }
   };
   const onMouseUp = () => setIsPanning(false);
+
+  // Touch события для мобильных устройств
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (!isImage || e.touches.length === 0) return;
+    
+    if (e.touches.length === 1) {
+      // Один палец - панорамирование
+      setIsPanning(true);
+      setPanStart({ 
+        x: e.touches[0].clientX - panOffset.x - touchPanOffset.x, 
+        y: e.touches[0].clientY - panOffset.y - touchPanOffset.y 
+      });
+    } else if (e.touches.length === 2) {
+      // Два пальца - зум
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      setTouchStart({ 
+        x: (touch1.clientX + touch2.clientX) / 2, 
+        y: (touch1.clientY + touch2.clientY) / 2, 
+        distance 
+      });
+    }
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!isImage) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.touches.length === 1 && isPanning) {
+      // Панорамирование одним пальцем
+      setPanOffset({ 
+        x: e.touches[0].clientX - panStart.x, 
+        y: e.touches[0].clientY - panStart.y 
+      });
+    } else if (e.touches.length === 2 && touchStart) {
+      // Зум двумя пальцами
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      
+      // Вычисляем новый зум
+      const scale = distance / touchStart.distance;
+      const newZoom = Math.max(0.2, Math.min(5, zoom * scale));
+      setZoom(newZoom);
+      
+      // Панорамирование при зуме
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+      
+      setTouchPanOffset({
+        x: centerX - touchStart.x,
+        y: centerY - touchStart.y
+      });
+    }
+  };
+
+  const onTouchEnd = () => {
+    setIsPanning(false);
+    setTouchStart(null);
+  };
 
   // Панорамирование для видео
   const onVideoMouseDown = (e: React.MouseEvent) => {
@@ -407,17 +488,22 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           gridTemplateRows: isFullscreen ? '1fr' : '60px 1fr 80px'
         }}
         onMouseDown={isImage ? onMouseDown : isVideo ? onVideoMouseDown : undefined}
+        onMouseMove={isImage ? onMouseMove : isVideo ? onVideoMouseMove : undefined}
+        onMouseUp={isImage ? onMouseUp : isVideo ? onVideoMouseUp : undefined}
         onWheel={onWheel}
+        onTouchStart={isImage ? onTouchStart : undefined}
+        onTouchMove={isImage ? onTouchMove : undefined}
+        onTouchEnd={isImage ? onTouchEnd : undefined}
       >
         {/* Header - скрываем в полноэкранном режиме */}
         {!isFullscreen && (
           <div className="flex justify-between items-center p-3 bg-gray-900/80 backdrop-blur-sm">
             <div className="min-w-0 flex-1">
               <h2 className="text-lg font-bold truncate text-white" title={file.filename}>
-                {truncateText(file.filename, 10)}
+                {truncateText(file.filename, 7)}
               </h2>
               <p className="text-xs text-gray-300 truncate">
-                {file.category_name} • {file.file_size} bytes
+                {file.category_name} • {formatFileSize(file.file_size)}
               </p>
             </div>
 
@@ -510,9 +596,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           {isImage && (
             <div
               ref={imageContainerRef}
-              className="will-change-transform flex items-center justify-center w-full h-full"
+              className="will-change-transform flex items-center justify-center w-full h-full touch-none"
               style={{
-                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+                transform: `translate(${panOffset.x + touchPanOffset.x}px, ${panOffset.y + touchPanOffset.y}px) scale(${zoom}) rotate(${rotation}deg)`,
                 transition: isPanning ? 'none' : 'transform 0.15s ease'
               }}
             >

@@ -359,16 +359,19 @@ export const Search: React.FC = () => {
 
         {/* Search Results */}
         <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-white">
-              {searchQuery ? `Search Results for "${searchQuery}"` : 'Recent Files'}
-            </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
+              <h2 className="text-xl font-semibold text-white">
+                {searchQuery ? `Search Results for "${searchQuery}"` : 'Recent Files'}
+              </h2>
               {stats.total > 0 && (
-                <span className="text-slate-400">
+                <span className="text-slate-400 whitespace-nowrap">
                   {stats.total} files total
                 </span>
               )}
+            </div>
+
+            <div className="flex items-center justify-center sm:justify-start">
               {renderPagination()}
             </div>
           </div>

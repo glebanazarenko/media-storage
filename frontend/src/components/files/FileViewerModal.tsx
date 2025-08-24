@@ -230,6 +230,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   // Обработчик колесика мыши (только для зума)
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Предотвращаем прокрутку фона
     if (isImage) {
       setZoom(z => (e.deltaY < 0 ? Math.min(z * 1.2, 5) : Math.max(z / 1.2, 0.2)));
     } else if (isVideo) {
@@ -239,7 +240,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
 
   const onMouseMove = (e: MouseEvent) => {
     if (!isImage) return;
-    if (isPanning) setPanOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
+    if (isPanning) {
+      e.preventDefault();
+      e.stopPropagation(); // Предотвращаем прокрутку фона
+      setPanOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
+    }
   };
   const onMouseUp = () => setIsPanning(false);
 
@@ -252,6 +257,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   };
   const onVideoMouseMove = (e: MouseEvent) => {
     if (!isVideo || !isVideoPanning) return;
+    e.preventDefault();
+    e.stopPropagation(); // Предотвращаем прокрутку фона
     setVideoPanOffset({ x: e.clientX - videoPanStart.x, y: e.clientY - videoPanStart.y });
   };
   const onVideoMouseUp = () => setIsVideoPanning(false);
@@ -339,17 +346,40 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     height: '100vh',
   };
 
+  // Блокируем прокрутку страницы при открытии модального окна
+  useEffect(() => {
+    const body = document.body;
+    const originalOverflow = body.style.overflow;
+    
+    // Блокируем прокрутку
+    body.style.overflow = 'hidden';
+    
+    return () => {
+      // Возвращаем оригинальное состояние
+      body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   return (
     <div
       ref={modalRef}
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === modalRef.current) onClose(); }}
+      onClick={(e) => { 
+        if (e.target === modalRef.current) onClose(); 
+      }}
+      onWheel={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
     >
       {/* Стрелки навигации */}
       {hasPrev && onPrev && (
         <button
           className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10 control-button"
-          onClick={(e) => { e.stopPropagation(); onPrev(); }}
+          onClick={(e) => { 
+            e.stopPropagation(); 
+            onPrev(); 
+          }}
         >
           <ChevronLeft className="w-12 h-12" />
         </button>
@@ -357,7 +387,10 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
       {hasNext && onNext && (
         <button
           className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10 control-button"
-          onClick={(e) => { e.stopPropagation(); onNext(); }}
+          onClick={(e) => { 
+            e.stopPropagation(); 
+            onNext(); 
+          }}
         >
           <ChevronRight className="w-12 h-12" />
         </button>

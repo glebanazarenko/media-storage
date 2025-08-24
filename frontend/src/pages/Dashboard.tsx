@@ -271,20 +271,22 @@ export const Dashboard: React.FC = () => {
         />
 
         {/* Sort Controls and Top Pagination */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center space-x-4">
             <h2 className="text-xl font-semibold text-white">
               {searchFilters.category === 'all' ? 'All Files' : `${searchFilters.category} Files`}
             </h2>
             {stats.total > 0 && (
-              <span className="text-slate-400">
+              <span className="text-slate-400 whitespace-nowrap">
                 {stats.total} files total
               </span>
             )}
           </div>
 
-          <div className="flex items-center space-x-4">
-            {renderPagination()}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center justify-center sm:justify-start">
+              {renderPagination()}
+            </div>
             
             <div className="flex items-center space-x-3">
               <select
@@ -299,7 +301,7 @@ export const Dashboard: React.FC = () => {
               
               <button
                 onClick={() => handleSortChange(searchFilters.sortBy, searchFilters.sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700 transition-colors"
+                className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700 transition-colors whitespace-nowrap"
               >
                 {searchFilters.sortOrder === 'asc' ? '↑ ASC' : '↓ DESC'}
               </button>

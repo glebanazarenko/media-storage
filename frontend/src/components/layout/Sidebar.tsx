@@ -68,14 +68,13 @@ export const Sidebar: React.FC = () => {
           </div>
           {user && (
             <p className="text-sm text-slate-400 mt-2">
-              {/* Welcome, {user.username} */}
               {t('nav.welcome')}, {user.username}
             </p>
           )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 overflow-y-auto p-4">
           <ul className="space-y-2">
             {menuItems.map((item) => (
               <li key={item.path}>

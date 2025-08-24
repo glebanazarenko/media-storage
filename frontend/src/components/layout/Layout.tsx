@@ -10,9 +10,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { sidebarOpen } = useApp();
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-slate-950 flex">
       <Sidebar />
-      <main className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'ml-0'}`}>
+      <main className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'ml-0'} overflow-x-hidden`}>
         {children}
       </main>
     </div>

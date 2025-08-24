@@ -37,30 +37,87 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
 
   return (
     <div className="flex flex-wrap gap-3 mb-6">
-      {categories.map((category) => {
-        const isActive = searchFilters.category === category.key;
-        return (
-          <button
-            key={category.key}
-            onClick={() => handleCategoryChange(category.key)}
-            disabled={loading}
-            className={`relative px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
-              isActive
-                ? `bg-gradient-to-r ${category.color} text-white shadow-lg ring-2 ring-white/20`
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 hover:border-slate-600'
-            }`}
-          >
-            {loading && isActive && (
-              <div className="absolute inset-0 flex items-center justify-center bg-inherit rounded-xl">
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-              </div>
-            )}
-            <span className={loading && isActive ? 'opacity-0' : 'opacity-100'}>
-              {category.label}
-            </span>
-          </button>
-        );
-      })}
+      {/* Первый ряд - All и 0+ */}
+      <button
+        key="all"
+        onClick={() => handleCategoryChange('all')}
+        disabled={loading}
+        className={`relative px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
+          searchFilters.category === 'all'
+            ? `bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg ring-2 ring-white/20`
+            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 hover:border-slate-600'
+        }`}
+      >
+        {loading && searchFilters.category === 'all' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-inherit rounded-xl">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+          </div>
+        )}
+        <span className={loading && searchFilters.category === 'all' ? 'opacity-0' : 'opacity-100'}>
+          {t('category.all')}
+        </span>
+      </button>
+
+      <button
+        key="0+"
+        onClick={() => handleCategoryChange('0+')}
+        disabled={loading}
+        className={`relative px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
+          searchFilters.category === '0+'
+            ? `bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg ring-2 ring-white/20`
+            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 hover:border-slate-600'
+        }`}
+      >
+        {loading && searchFilters.category === '0+' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-inherit rounded-xl">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+          </div>
+        )}
+        <span className={loading && searchFilters.category === '0+' ? 'opacity-0' : 'opacity-100'}>
+          {t('category.0+')}
+        </span>
+      </button>
+
+      {/* Второй ряд - 16+ и 18+ */}
+      <button
+        key="16+"
+        onClick={() => handleCategoryChange('16+')}
+        disabled={loading}
+        className={`relative px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
+          searchFilters.category === '16+'
+            ? `bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg ring-2 ring-white/20`
+            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 hover:border-slate-600'
+        }`}
+      >
+        {loading && searchFilters.category === '16+' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-inherit rounded-xl">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+          </div>
+        )}
+        <span className={loading && searchFilters.category === '16+' ? 'opacity-0' : 'opacity-100'}>
+          {t('category.16+')}
+        </span>
+      </button>
+
+      <button
+        key="18+"
+        onClick={() => handleCategoryChange('18+')}
+        disabled={loading}
+        className={`relative px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
+          searchFilters.category === '18+'
+            ? `bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg ring-2 ring-white/20`
+            : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700 hover:border-slate-600'
+        }`}
+      >
+        {loading && searchFilters.category === '18+' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-inherit rounded-xl">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+          </div>
+        )}
+        <span className={loading && searchFilters.category === '18+' ? 'opacity-0' : 'opacity-100'}>
+          {t('category.18+')}
+        </span>
+      </button>
     </div>
   );
 };

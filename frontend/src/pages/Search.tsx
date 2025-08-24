@@ -173,7 +173,11 @@ export const Search: React.FC = () => {
   };
 
   const handlePageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPageInput(e.target.value);
+    const value = e.target.value;
+    // Проверяем, что введено только число
+    if (/^\d*$/.test(value)) {
+      setPageInput(value);
+    }
   };
 
   const handlePageInputSubmit = (e: React.FormEvent) => {
@@ -197,9 +201,27 @@ export const Search: React.FC = () => {
           Previous
         </button>
 
-        <span className="px-3 py-1 text-slate-300 text-sm">
-          Page {stats.currentPage} of {stats.pages}
-        </span>
+        <div className="flex items-center space-x-1">
+          <span className="text-slate-400 text-sm">Page</span>
+          <input
+            type="number"
+            min="1"
+            max={stats.pages}
+            value={pageInput}
+            onChange={handlePageInputChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const page = parseInt(pageInput);
+                if (!isNaN(page) && page >= 1 && page <= stats.pages) {
+                  handlePageChange(page);
+                }
+              }
+            }}
+            className="w-10 px-2 py-1 bg-slate-800 border border-slate-700 text-white rounded text-sm focus:outline-none focus:border-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <span className="text-slate-400 text-sm">of {stats.pages}</span>
+        </div>
 
         <button
           onClick={() => handlePageChange(stats.currentPage + 1)}
@@ -208,24 +230,6 @@ export const Search: React.FC = () => {
         >
           Next
         </button>
-
-        <form onSubmit={handlePageInputSubmit} className="flex items-center space-x-2">
-          <input
-            type="number"
-            min="1"
-            max={stats.pages}
-            value={pageInput}
-            onChange={handlePageInputChange}
-            className="w-16 px-2 py-1 bg-slate-800 border border-slate-700 text-white rounded text-sm focus:outline-none focus:border-purple-500"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Go
-          </button>
-        </form>
       </div>
     );
   };

@@ -2,8 +2,7 @@ import re
 from typing import List
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, func
-from sqlalchemy.orm import Session
+from sqlalchemy import and_
 
 from app.core.database import get_db_session
 from app.models.base import File, Tag

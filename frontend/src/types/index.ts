@@ -2,65 +2,90 @@ export interface User {
   id: string;
   username: string;
   email: string;
-  role: 'user' | 'admin';
-  avatar?: string;
-  createdAt: string;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface MediaFile {
+export interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+export interface RegisterData {
+  username: string;
+  email: string;
+  password: string;
+}
+
+export interface FileItem {
   id: string;
-  originalName: string;
-  fileName: string;
-  mimeType: string;
-  size: number;
-  path: string;
-  thumbnailPath?: string;
-  previewPath?: string;
+  filename: string;
   description?: string;
-  tags: string[];
-  rating: '0+' | '16+' | '18+';
-  createdAt: string;
-  updatedAt: string;
-  ownerId: string;
-  owner: User;
-  dimensions?: {
-    width: number;
-    height: number;
-  };
-  duration?: number; // for videos in seconds
+  mime_type: string;
+  file_path: string;
+  file_size: number;
+  category_name: '0+' | '16+' | '18+';
+  tags: Tag[];
+  created_at: string;
+  updated_at: string;
+  thumbnail_url?: string;
+  owner_id: string;
+  views_count?: number;
+  downloads_count?: number;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  category?: string;
+  usage_count?: number;
 }
 
 export interface Collection {
   id: string;
   name: string;
   description?: string;
-  isPublic: boolean;
-  ownerId: string;
-  owner: User;
-  members: CollectionMember[];
-  mediaFiles: MediaFile[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CollectionMember {
-  id: string;
-  userId: string;
-  user: User;
-  role: 'editor' | 'viewer';
-  joinedAt: string;
+  files: FileItem[];
+  owner_id: string;
+  members: User[];
+  created_at: string;
+  is_private: boolean;
+  file_count: number;
+  thumbnail_url?: string;
 }
 
 export interface SearchFilters {
-  query?: string;
-  tags?: string[];
-  excludeTags?: string[];
-  rating?: string[];
-  fileType?: string[];
+  category: 'all' | '0+' | '16+' | '18+';
+  tags: string[];
+  excludeTags: string[];
   dateFrom?: string;
   dateTo?: string;
-  sizeMin?: number;
-  sizeMax?: number;
-  sortBy?: 'createdAt' | 'size' | 'name';
-  sortOrder?: 'asc' | 'desc';
+  fileTypes: string[];
+  minSize?: number;
+  maxSize?: number;
+  sortBy: 'date' | 'name' | 'size' | 'views' | 'downloads';
+  sortOrder: 'asc' | 'desc';
+}
+
+export interface FileUploadData {
+  file: File;
+  description?: string;
+  tags: string[];
+  category: '0+' | '16+' | '18+';
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  message?: string;
+  success: boolean;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pages: number;
+  limit: number;
 }

@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime
 
 from sqlalchemy import TIMESTAMP
 from sqlalchemy import UUID as UUIDType
@@ -121,3 +120,14 @@ class User(Base):
     files = relationship("File", back_populates="owner")
     group_memberships = relationship("GroupMember", back_populates="user")
     created_groups = relationship("Group", back_populates="creator")
+
+    def to_response_dict(self):
+        return {
+            "id": str(self.id),
+            "username": self.username,
+            "email": self.email,
+            "is_active": self.is_active,
+            "is_admin": self.is_admin,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at if self.updated_at else self.created_at,
+        }

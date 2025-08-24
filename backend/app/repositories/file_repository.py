@@ -1,18 +1,19 @@
-from typing import List
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import String, and_, asc, cast, desc, not_, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, asc, desc, not_, or_
+from sqlalchemy.orm import joinedload
 
 from app.core.database import get_db_session
 from app.models.base import Category
 from app.models.base import File as DBFile
 from app.models.base import Tag
+from app.repositories.tag_repository import get_or_create_tags
 from app.schemas.file_schemas import FileCreate
 
 
-def create_file(file_data: FileCreate):
+def create_file(file_data: FileCreate) -> DBFile:
     with get_db_session() as db:
         db_file = DBFile(**file_data.model_dump())
         db.add(db_file)
@@ -21,14 +22,23 @@ def create_file(file_data: FileCreate):
         return db_file
 
 
-def get_file_by_id(file_id: str):
+def get_file_by_id(file_id: str) -> DBFile:
     with get_db_session() as db:
         return db.query(DBFile).filter(DBFile.id == file_id).first()
 
 
+def delete_file_from_db(file_id: str) -> None:
+    """Удаление файла из базы данных"""
+    with get_db_session() as db:
+        db_file = db.query(DBFile).filter(DBFile.id == file_id).first()
+        if db_file:
+            db.delete(db_file)
+            db.commit()
+
+
 def get_filtered_files(
     category: str, sort_column: str, order: str, limit: int, offset: int, user_id: str
-):
+) -> tuple[list[DBFile], int]:
     with get_db_session() as db:
         # Создаем запрос с JOIN к таблице категорий
         query = (
@@ -58,7 +68,7 @@ def get_filtered_files(
         return files, total
 
 
-def get_category_id_by_slug(slug: str) -> str:
+def get_category_id_by_slug(slug: str) -> UUID:
     """Получить ID категории по slug"""
     with get_db_session() as db:
         category = db.query(Category).filter(Category.slug == slug).first()
@@ -106,18 +116,17 @@ def split_masks(s: str) -> list[str]:
     return [p for p in raw if p]
 
 
-# --- UPDATED: search_files (только блок поиска по тексту заменён) ---
 def search_files(
     query: str = None,
     category: str | None = None,
-    include_tags: List[str] = None,
-    exclude_tags: List[str] = None,
+    include_tags: list[str] = None,
+    exclude_tags: list[str] = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
     page: int = 1,
     limit: int = 20,
     user_id: str = None,
-) -> tuple[List[DBFile], int]:
+) -> tuple[list[DBFile], int]:
     """
     Поиск файлов с фильтрами.
     Поддерживает поиск по original_name, description, tag.name,
@@ -180,3 +189,44 @@ def search_files(
         total = query_obj.count()
 
         return files, total
+
+
+def update_file(
+    file_id: str,
+    description: str | None,
+    tag_names: str,
+    category: str,
+    user_id: str,
+) -> DBFile:
+    with get_db_session() as db:
+        # Получаем файл
+        db_file = (
+            db.query(DBFile)
+            .filter(DBFile.id == file_id, DBFile.owner_id == user_id)
+            .first()
+        )
+        if not db_file:
+            raise Exception("File not found or access denied")
+
+        # Обновляем описание
+        if description is not None:
+            db_file.description = description
+
+        # Обновляем категорию
+        category_mapping = {"0+": "0-plus", "16+": "16-plus", "18+": "18-plus"}
+        db_file.category_id = get_category_id_by_slug(
+            category_mapping.get(category, "0-plus")
+        )
+
+        # Обновляем теги
+        if tag_names:
+            tag_name_list = [
+                name.strip() for name in tag_names.split(",") if name.strip()
+            ]
+            tag_name_list = list(set(tag_name_list))
+            db_file.tags = get_or_create_tags(tag_name_list)
+
+        db_file.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(db_file)
+        return db_file

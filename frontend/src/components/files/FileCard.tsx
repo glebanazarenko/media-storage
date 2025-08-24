@@ -3,6 +3,7 @@ import { Play, Download, Edit, Trash2, Eye } from 'lucide-react';
 import { FileItem } from '../../types';
 import { useApp } from '../../contexts/AppContext';
 import { EditFileModal } from './EditFileModal';
+import { filesAPI } from '../../services/api';
 
 interface FileCardProps {
   file: FileItem;
@@ -41,6 +42,10 @@ export const FileCard: React.FC<FileCardProps> = ({
   const handleSaveEdit = (updatedFile: FileItem) => {
     setShowEditModal(false);
     onEdit?.(updatedFile);
+  };
+
+  const handleDownload = () => {
+    filesAPI.downloadFile(file.id);
   };
 
   return (
@@ -109,7 +114,7 @@ export const FileCard: React.FC<FileCardProps> = ({
                   <Edit className="w-5 h-5" />
                 </button>
                 <button
-                  onClick={() => window.open(`http://localhost:8000/files/${file.id}/download`, '_blank')}
+                  onClick={handleDownload}
                   className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-colors"
                 >
                   <Download className="w-5 h-5" />

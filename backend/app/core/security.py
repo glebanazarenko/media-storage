@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
-from fastapi.security import OAuth2, OAuth2PasswordBearer
+from fastapi.security import OAuth2
 from fastapi.security.utils import get_authorization_scheme_param
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -70,7 +70,6 @@ def get_password_hash(password):
 def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        # status_code=500,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )

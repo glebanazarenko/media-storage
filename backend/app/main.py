@@ -1,14 +1,17 @@
 import logging
 
 import uvicorn
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 
-# from app.models.base import Base  # Если у тебя есть base.py с Base = declarative_base()
 from app.core.config import settings
-from app.core.database import get_db_session
-from app.routers import auth_router, file_router, group_router, tag_router, backup_router
+from app.routers import (
+    auth_router,
+    backup_router,
+    file_router,
+    group_router,
+    tag_router,
+)
 
 # Глобальная настройка логирования
 logging.basicConfig(
@@ -23,15 +26,9 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Подключение middleware CORS
-origins = [
-    "http://localhost:5173",  # frontend
-    "http://127.0.0.1:5173",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,19 +40,6 @@ app.include_router(file_router.router)
 app.include_router(group_router.router)
 app.include_router(tag_router.router)
 app.include_router(backup_router.router)
-
-
-# Опционально: зависимость БД по умолчанию
-@app.get("/ping")
-def ping():
-    with get_db_session() as db:
-        pass
-    return {"status": "ok", "message": "Backend is running!"}
-
-
-@app.get("/test-env-jwt-alogitm")
-def test_env():
-    return settings.JWT_ALGORITHM
 
 
 if __name__ == "__main__":

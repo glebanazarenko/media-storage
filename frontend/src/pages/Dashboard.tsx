@@ -5,7 +5,7 @@ import { CategoryFilter } from '../components/files/CategoryFilter';
 import { FileGrid } from '../components/files/FileGrid';
 import { FileViewerModal } from '../components/files/FileViewerModal';
 import { FileItem } from '../types';
-import { filesAPI } from '../services/api';
+import { filesAPI, API_BASE_URL } from '../services/api';
 import { useApp } from '../contexts/AppContext';
 
 export interface SearchFilters {
@@ -50,13 +50,11 @@ export const Dashboard: React.FC = () => {
         name: file.tags_name[index] || tagId
       }));
 
-      const baseUrl = 'http://localhost:8000';
-
       const thumbnailUrl = file.thumbnail_path 
-        ? `${baseUrl}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
+        ? `${API_BASE_URL}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
         : null;
       const previewUrl = file.preview_path 
-        ? `${baseUrl}/files/thumbnail/${file.preview_path.replace('uploads/', '')}`
+        ? `${API_BASE_URL}/files/thumbnail/${file.preview_path.replace('uploads/', '')}`
         : null;
 
       return {

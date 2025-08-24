@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, LoginCredentials, RegisterData } from '../types';
-import { authAPI } from '../services/api';
+import { authAPI, API_BASE_URL } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await authAPI.test();
       if (response.data) {
         // Get full user profile
-        const userResponse = await fetch('http://localhost:8000/auth/profile', {
+        const userResponse = await fetch(`${API_BASE_URL}/auth/profile`, {
           credentials: 'include'
         });
         if (userResponse.ok) {

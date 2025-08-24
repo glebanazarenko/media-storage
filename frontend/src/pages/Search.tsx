@@ -6,7 +6,7 @@ import { FileGrid } from '../components/files/FileGrid';
 import { TagInput } from '../components/files/TagInput';
 import { FileItem } from '../types';
 import { useApp } from '../contexts/AppContext';
-import { filesAPI } from '../services/api';
+import { filesAPI, API_BASE_URL } from '../services/api';
 import { FileViewerModal } from '../components/files/FileViewerModal';
 
 export const Search: React.FC = () => {
@@ -32,13 +32,11 @@ export const Search: React.FC = () => {
       name: file.tags_name[index] || tagId
     }));
 
-    const baseUrl = 'http://localhost:8000';
-
     const thumbnailUrl = file.thumbnail_path 
-      ? `${baseUrl}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
+      ? `${API_BASE_URL}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
       : null;
     const previewUrl = file.preview_path 
-      ? `${baseUrl}/files/preview/${file.preview_path.replace('uploads/', '')}`
+      ? `${API_BASE_URL}/files/preview/${file.preview_path.replace('uploads/', '')}`
       : null;
 
     return {

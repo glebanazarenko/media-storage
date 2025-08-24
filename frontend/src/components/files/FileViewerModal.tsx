@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Play, Pause, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
 import { FileItem } from '../../types';
+import { filesAPI, API_BASE_URL } from '../../services/api';
 
 interface FileViewerModalProps {
   file: FileItem;
@@ -54,7 +55,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const isVideo = file.mime_type.startsWith('video/');
   const isAudio = file.mime_type.startsWith('audio/');
 
-  const getFileUrl = () => `http://localhost:8000/files/${file.id}/stream`;
+  const getFileUrl = () => `${API_BASE_URL}/files/${file.id}/stream`;
 
   // Функция для обрезки текста
   const truncateText = (text: string, maxLength: number) => {
@@ -323,6 +324,10 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const handleDownload = () => {
+    filesAPI.downloadFile(file.id);
+  };
+
   // Размеры для модального окна (увеличенные)
   const modalBoxStyle: React.CSSProperties = {
     width: 'min(98vw, 1400px)',
@@ -437,7 +442,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
 
               <button
                 className="control-button p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
-                onClick={(e) => { e.stopPropagation(); window.open(`http://localhost:8000/files/${file.id}/download`, '_blank'); }}
+                onClick={(e) => { e.stopPropagation(); handleDownload(); }}
                 title="Download"
               >
                 <Download className="w-4 h-4" />
@@ -606,7 +611,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.open(`http://localhost:8000/files/${file.id}/download`, '_blank');
+                  handleDownload();
                 }}
                 className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors text-base flex items-center mx-auto"
               >

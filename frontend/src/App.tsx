@@ -1,84 +1,135 @@
-import React, { useState } from 'react';
-import { Header } from './components/Layout/Header';
-import { Sidebar } from './components/Sidebar/Sidebar';
-import { MediaGrid } from './components/Media/MediaGrid';
-import { UploadModal } from './components/Upload/UploadModal';
-import { useMediaFiles } from './hooks/useMediaFiles';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AppProvider } from './contexts/AppContext';
+import { LoginForm } from './components/auth/LoginForm';
+import { RegisterForm } from './components/auth/RegisterForm';
+import { Dashboard } from './pages/Dashboard';
+import { Upload } from './pages/Upload';
+import { Search } from './pages/Search';
+import { Collections } from './pages/Collections';
+import { Settings } from './pages/Settings';
+import './i18n';
+
+// Protected Route Component
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-purple-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-slate-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Public Route Component (redirect if authenticated)
+const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-purple-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-slate-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+};
 
 function App() {
-  const [activeSection, setActiveSection] = useState('all');
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const { files, loading, updateFilters, addFiles } = useMediaFiles();
-
-  const handleSearch = (query: string) => {
-    updateFilters({ query });
-  };
-
-  const handleUpload = (newFiles: File[]) => {
-    addFiles(newFiles);
-  };
-
-  const handleFileAction = (file: any, action: string) => {
-    console.log(`Action: ${action} on file:`, file.originalName);
-    // Handle file actions like view, download, share, edit, delete
-  };
-
-  // Mock user data
-  const user = {
-    username: 'demo_user',
-    avatar: undefined,
-  };
-
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100">
-      {/* Header */}
-      <Header
-        onUpload={() => setIsUploadModalOpen(true)}
-        onSearch={handleSearch}
-        user={user}
-      />
+    <AuthProvider>
+      <AppProvider>
+        <Router>
+          <div className="min-h-screen bg-slate-950">
+            <Routes>
+              {/* Public Routes */}
+              <Route
+                path="/login"
+                element={
+                  <PublicRoute>
+                    <LoginForm />
+                  </PublicRoute>
+                }
+              />
+              <Route
+                path="/register"
+                element={
+                  <PublicRoute>
+                    <RegisterForm />
+                  </PublicRoute>
+                }
+              />
 
-      <div className="flex h-[calc(100vh-4rem)]">
-        {/* Sidebar */}
-        <Sidebar
-          activeSection={activeSection}
-          onSectionChange={setActiveSection}
-        />
+              {/* Protected Routes */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/upload"
+                element={
+                  <ProtectedRoute>
+                    <Upload />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/search"
+                element={
+                  <ProtectedRoute>
+                    <Search />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/collections"
+                element={
+                  <ProtectedRoute>
+                    <Collections />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <Settings />
+                  </ProtectedRoute>
+                }
+              />
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-6">
-            {/* Header Section */}
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-white mb-2">
-                {activeSection === 'all' && 'All Media'}
-                {activeSection === 'recent' && 'Recent Files'}
-                {activeSection === 'favorites' && 'Favorites'}
-                {activeSection === 'collections' && 'Collections'}
-                {activeSection === 'shared' && 'Shared with Me'}
-              </h1>
-              <p className="text-gray-400">
-                {loading ? 'Loading...' : `${files.length} files found`}
-              </p>
-            </div>
-
-            {/* Media Grid */}
-            <MediaGrid
-              files={files}
-              loading={loading}
-              onFileAction={handleFileAction}
-            />
+              {/* Default redirect */}
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
           </div>
-        </main>
-      </div>
-
-      {/* Upload Modal */}
-      <UploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onUpload={handleUpload}
-      />
-    </div>
+        </Router>
+      </AppProvider>
+    </AuthProvider>
   );
 }
 

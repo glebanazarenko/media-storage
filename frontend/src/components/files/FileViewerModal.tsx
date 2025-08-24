@@ -39,6 +39,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [touchStart, setTouchStart] = useState<{ x: number; y: number; distance: number } | null>(null);
   const [touchPanOffset, setTouchPanOffset] = useState({ x: 0, y: 0 });
 
+  // Для свайпов в полноэкранном режиме
+  const [touchStartX, setTouchStartX] = useState(0);
+  const [touchEndX, setTouchEndX] = useState(0);
+  const [swipeStartZone, setSwipeStartZone] = useState<'left' | 'right' | null>(null);
+
   // Для видео
   const [videoZoom, setVideoZoom] = useState(1);
   const [videoPanOffset, setVideoPanOffset] = useState({ x: 0, y: 0 });
@@ -54,6 +59,10 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mediaNatural, setMediaNatural] = useState({ width: 800, height: 600 });
   const [videoNatural, setVideoNatural] = useState({ width: 800, height: 450 });
+
+  // Для двойного клика
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const [lastClickPosition, setLastClickPosition] = useState({ x: 0, y: 0 });
 
   const isImage = file.mime_type.startsWith('image/');
   const isVideo = file.mime_type.startsWith('video/');
@@ -240,6 +249,30 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
   };
   
+  // Обработчик двойного клика
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFullscreen();
+  };
+
+  // Обработчик одиночного клика для определения двойного клика
+  const handleClick = (e: React.MouseEvent) => {
+    const now = Date.now();
+    const clickPosition = { x: e.clientX, y: e.clientY };
+    
+    // Проверяем, является ли это двойным кликом (время между кликами < 300ms и позиция близкая)
+    if (now - lastClickTime < 300 && 
+        Math.abs(clickPosition.x - lastClickPosition.x) < 10 && 
+        Math.abs(clickPosition.y - lastClickPosition.y) < 10) {
+      handleDoubleClick(e);
+      setLastClickTime(0); // Сбрасываем для предотвращения тройного клика
+    } else {
+      setLastClickTime(now);
+      setLastClickPosition(clickPosition);
+    }
+  };
+
   // Обработчик колесика мыши (только для зума)
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -327,6 +360,53 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const onTouchEnd = () => {
     setIsPanning(false);
     setTouchStart(null);
+  };
+
+  // Обработчики свайпов в полноэкранном режиме
+  const handleFullscreenTouchStart = (e: React.TouchEvent) => {
+    if (!isFullscreen) return;
+    
+    const touchX = e.targetTouches[0].clientX;
+    const screenWidth = window.innerWidth;
+    const zoneWidth = screenWidth * 0.2; // 20% экрана
+    
+    // Определяем зону начала свайпа
+    if (touchX <= zoneWidth) {
+      setSwipeStartZone('left');
+    } else if (touchX >= screenWidth - zoneWidth) {
+      setSwipeStartZone('right');
+    } else {
+      setSwipeStartZone(null);
+    }
+    
+    setTouchStartX(touchX);
+  };
+
+  const handleFullscreenTouchMove = (e: React.TouchEvent) => {
+    if (!isFullscreen) return;
+    setTouchEndX(e.targetTouches[0].clientX);
+  };
+
+  const handleFullscreenTouchEnd = () => {
+    if (!isFullscreen || !swipeStartZone) return;
+    
+    const swipeThreshold = 50; // Минимальная дистанция свайпа в пикселях
+    const deltaX = touchEndX - touchStartX;
+    
+    if (swipeStartZone === 'left' && deltaX < swipeThreshold) {
+      // Свайп вправо из левой зоны - предыдущий файл
+      if (hasPrev && onPrev) {
+        onPrev();
+      }
+    } else if (swipeStartZone === 'right' && deltaX < -swipeThreshold) {
+      // Свайп влево из правой зоны - следующий файл
+      if (hasNext && onNext) {
+        onNext();
+      }
+    }
+    
+    // Сбрасываем зону
+    setSwipeStartZone(null);
   };
 
   // Панорамирование для видео
@@ -491,9 +571,37 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         onMouseMove={isImage ? onMouseMove : isVideo ? onVideoMouseMove : undefined}
         onMouseUp={isImage ? onMouseUp : isVideo ? onVideoMouseUp : undefined}
         onWheel={onWheel}
-        onTouchStart={isImage ? onTouchStart : undefined}
-        onTouchMove={isImage ? onTouchMove : undefined}
-        onTouchEnd={isImage ? onTouchEnd : undefined}
+        onTouchStart={(e) => {
+          if (isImage || isVideo) {
+            if (isImage) {
+              onTouchStart(e);
+            }
+            if (isFullscreen) {
+              handleFullscreenTouchStart(e);
+            }
+          }
+        }}
+        onTouchMove={(e) => {
+          if (isImage || isVideo) {
+            if (isImage) {
+              onTouchMove(e);
+            }
+            if (isFullscreen) {
+              handleFullscreenTouchMove(e);
+            }
+          }
+        }}
+        onTouchEnd={(e) => {
+          if (isImage || isVideo) {
+            if (isImage) {
+              onTouchEnd();
+            }
+            if (isFullscreen) {
+              handleFullscreenTouchEnd();
+            }
+          }
+        }}
+        onClick={isImage ? handleClick : undefined}
       >
         {/* Header - скрываем в полноэкранном режиме */}
         {!isFullscreen && (

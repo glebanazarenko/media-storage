@@ -300,7 +300,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         y: e.touches[0].clientY - panStart.y 
       });
     } else if (e.touches.length === 2 && touchStart) {
-      // Зум двумя пальцами
+      // Зум двумя пальцами с уменьшенной чувствительностью
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
       const distance = Math.sqrt(
@@ -308,18 +308,18 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         Math.pow(touch2.clientY - touch1.clientY, 2)
       );
       
-      // Вычисляем новый зум
-      const scale = distance / touchStart.distance;
+      // Уменьшаем чувствительность зума в 2 раза
+      const scale = (distance / touchStart.distance) * 0.5 + 0.5;
       const newZoom = Math.max(0.2, Math.min(5, zoom * scale));
       setZoom(newZoom);
       
-      // Панорамирование при зуме
+      // Панорамирование при зуме с уменьшенной чувствительностью
       const centerX = (touch1.clientX + touch2.clientX) / 2;
       const centerY = (touch1.clientY + touch2.clientY) / 2;
       
       setTouchPanOffset({
-        x: centerX - touchStart.x,
-        y: centerY - touchStart.y
+        x: (centerX - touchStart.x) * 0.3, // Уменьшаем чувствительность панорамирования
+        y: (centerY - touchStart.y) * 0.3
       });
     }
   };

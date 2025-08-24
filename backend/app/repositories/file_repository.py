@@ -97,7 +97,7 @@ def get_category_name_by_id(category_id: UUID) -> str:
 def glob_to_ilike_pattern(mask: str) -> str:
     """
     Преобразует маску (*.mp4, a??.jpg) в шаблон для ILIKE.
-    Экранирует %, _, \. '*' -> '%', '?' -> '_'.
+    Экранирует %, _, \\. '*' -> '%', '?' -> '_'.
     """
     s = mask.replace("\\", "\\\\")
     s = s.replace("%", r"\%").replace("_", r"\_")

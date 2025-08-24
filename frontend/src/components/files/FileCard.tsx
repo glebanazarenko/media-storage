@@ -26,6 +26,9 @@ export const FileCard: React.FC<FileCardProps> = ({
   const isImage = file.mime_type.startsWith('image/');
   const isAdultContent = file.category_name === '18+' || file.category_name === '16+';
   const shouldBlur = blurAdultContent && isAdultContent;
+  
+  // Показываем бейдж только для 16+ и 18+
+  const showCategoryBadge = file.category_name === '18+' || file.category_name === '16+';
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -51,22 +54,24 @@ export const FileCard: React.FC<FileCardProps> = ({
   return (
     <>
       <div
-        className="bg-slate-900 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] border border-slate-800"
+        className="bg-slate-900 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] border border-slate-800 flex flex-col h-full"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
         {/* Thumbnail/Preview */}
         <div className="relative aspect-video bg-slate-800 overflow-hidden">
-          {/* Category Badge */}
-          <div className="absolute top-2 left-2 z-10">
-            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-              file.category_name === '18+' ? 'bg-red-500 text-white' :
-              file.category_name === '16+' ? 'bg-orange-500 text-white' :
-              'bg-green-500 text-white'
-            }`}>
-              {file.category_name}
-            </span>
-          </div>
+          {/* Category Badge - только для 16+ и 18+ */}
+          {showCategoryBadge && (
+            <div className="absolute top-2 left-2 z-10">
+              <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                file.category_name === '18+' ? 'bg-red-500 text-white' :
+                file.category_name === '16+' ? 'bg-orange-500 text-white' :
+                'bg-green-500 text-white'
+              }`}>
+                {file.category_name}
+              </span>
+            </div>
+          )}
 
           {/* Thumbnail */}
           <div className={`w-full h-full flex items-center justify-center ${shouldBlur ? 'filter blur-lg' : ''}`}>
@@ -141,40 +146,40 @@ export const FileCard: React.FC<FileCardProps> = ({
         </div>
 
         {/* File Info */}
-        <div className="p-4">
-          <h3 className="font-semibold text-white mb-2 truncate" title={file.filename}>
-            {file.filename}
-          </h3>
-
-          {file.description && (
-            <p className="text-slate-400 text-sm mb-3 line-clamp-2">
-              {file.description}
+        <div className="p-4 flex flex-col flex-grow">
+          <div className="flex-grow">
+            <p 
+              className="font-semibold text-white mb-3 line-clamp-2" 
+              title={file.filename}
+            >
+              {file.description ? file.description : file.filename}
             </p>
-          )}
+          </div>
 
-          {/* Tags */}
-          {file.tags && file.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-3">
-              {file.tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag.id}
-                  className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full border border-purple-500/30"
-                >
-                  {tag.name}
-                </span>
-              ))}
-              {file.tags.length > 3 && (
-                <span className="px-2 py-1 bg-slate-700 text-slate-400 text-xs rounded-full">
-                  +{file.tags.length - 3}
-                </span>
+          {/* Tags and Date - всегда внизу */}
+          <div className="mt-auto pt-2">
+            <div className="flex justify-between items-start">
+              {file.tags && file.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 flex-1 mr-2">
+                  {file.tags.slice(0, 3).map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full border border-purple-500/30"
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                  {file.tags.length > 3 && (
+                    <span className="px-2 py-1 bg-slate-700 text-slate-400 text-xs rounded-full">
+                      +{file.tags.length - 3}
+                    </span>
+                  )}
+                </div>
               )}
+              <span className="text-xs text-slate-500 whitespace-nowrap">
+                {formatDate(file.created_at)}
+              </span>
             </div>
-          )}
-
-          {/* File Details */}
-          <div className="flex justify-between text-xs text-slate-500">
-            <span>{formatFileSize(file.file_size)}</span>
-            <span>{formatDate(file.created_at)}</span>
           </div>
         </div>
       </div>

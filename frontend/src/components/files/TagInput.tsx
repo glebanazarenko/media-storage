@@ -143,12 +143,6 @@ export const TagInput: React.FC<TagInputProps> = ({
         )}
       </div>
 
-      {allowNegative && (
-        <p className="text-xs text-slate-400 mt-2">
-          💡 Use "-" prefix to exclude tags (e.g., "-unwanted"). Press Enter or Space to add tags.
-        </p>
-      )}
-
       {/* Suggestions Dropdown */}
       {showSuggestions && suggestions.length > 0 && (
         <div

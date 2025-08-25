@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Layout } from '../components/layout/Layout';
 import { CategoryFilter } from '../components/files/CategoryFilter';
@@ -7,6 +7,7 @@ import { FileViewerModal } from '../components/files/FileViewerModal';
 import { FileItem } from '../types';
 import { filesAPI, API_BASE_URL } from '../services/api';
 import { useApp } from '../contexts/AppContext';
+import { useSearchParams } from 'react-router-dom';
 
 export interface SearchFilters {
   category: 'all' | '0+' | '16+' | '18+';
@@ -35,9 +36,78 @@ export const Dashboard: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [currentFileIndex, setCurrentFileIndex] = useState<number>(0);
   const [pageInput, setPageInput] = useState('');
+  
+  // Хук для работы с параметрами URL
+  const [searchParams, setSearchParams] = useSearchParams();
 
+  // Получение параметров из URL
+  const getFiltersFromURL = useCallback(() => {
+    const category = searchParams.get('category') || 'all';
+    const page = parseInt(searchParams.get('page') || '1');
+    const sort = searchParams.get('sort') || 'date';
+    const order = searchParams.get('order') || 'desc';
+    
+    return {
+      category: category as 'all' | '0+' | '16+' | '18+',
+      page: isNaN(page) ? 1 : page,
+      sort: sort as 'date' | 'name' | 'size' | 'views' | 'downloads',
+      order: order as 'asc' | 'desc'
+    };
+  }, [searchParams]);
+
+  // Сохранение параметров в URL
+  const updateURLParams = useCallback((filters: Partial<ReturnType<typeof getFiltersFromURL>>) => {
+    const newParams = new URLSearchParams();
+    
+    if (filters.category !== undefined) {
+      newParams.set('category', filters.category);
+    } else {
+      newParams.set('category', searchFilters.category);
+    }
+    
+    if (filters.page !== undefined) {
+      newParams.set('page', filters.page.toString());
+    } else {
+      newParams.set('page', stats.currentPage.toString());
+    }
+    
+    if (filters.sort !== undefined) {
+      newParams.set('sort', filters.sort);
+    } else {
+      newParams.set('sort', searchFilters.sortBy);
+    }
+    
+    if (filters.order !== undefined) {
+      newParams.set('order', filters.order);
+    } else {
+      newParams.set('order', searchFilters.sortOrder);
+    }
+    
+    setSearchParams(newParams);
+  }, [searchFilters, stats.currentPage, setSearchParams]);
+
+  // Инициализация из URL - только при первом рендере
   useEffect(() => {
-    loadFiles();
+    const urlFilters = getFiltersFromURL();
+    
+    // Обновляем фильтры из URL
+    setSearchFilters(prev => ({
+      ...prev,
+      category: urlFilters.category,
+      sortBy: urlFilters.sort,
+      sortOrder: urlFilters.order
+    }));
+    
+    // Загружаем файлы с параметрами из URL
+    loadFiles(urlFilters.page);
+  }, []); // Пустой массив зависимостей - выполняется только при монтировании
+
+  // Загрузка файлов при изменении фильтров
+  useEffect(() => {
+    // Загружаем файлы при изменении фильтров, но только если это не начальная загрузка
+    if (stats.currentPage !== 0) { // Предотвращаем двойную загрузку при инициализации
+      loadFiles(1); // Всегда сбрасываем на первую страницу при изменении фильтров
+    }
   }, [searchFilters.category, searchFilters.sortBy, searchFilters.sortOrder]);
 
   const loadFiles = async (page: number = 1) => {
@@ -101,6 +171,14 @@ export const Dashboard: React.FC = () => {
           currentPage: response.data.page
         });
         setPageInput(response.data.page.toString());
+        
+        // Обновляем URL после загрузки данных
+        updateURLParams({ 
+          page: response.data.page,
+          category: searchFilters.category,
+          sort: searchFilters.sortBy,
+          order: searchFilters.sortOrder
+        });
       } else {
         setFiles([]);
         setStats({ total: 0, pages: 0, currentPage: 1 });
@@ -121,6 +199,7 @@ export const Dashboard: React.FC = () => {
       category,
     };
     setSearchFilters(newFilters);
+    // Не вызываем loadFiles здесь - это сделает useEffect
   };
 
   const handleFileView = (file: FileItem) => {
@@ -177,6 +256,7 @@ export const Dashboard: React.FC = () => {
     };
     
     setSearchFilters(newFilters);
+    // Не вызываем loadFiles здесь - это сделает useEffect
   };
 
   const handlePageChange = (page: number) => {

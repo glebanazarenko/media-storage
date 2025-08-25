@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Play, Pause, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
+import { X, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Repeat } from 'lucide-react';
 import { FileItem } from '../../types';
 import { filesAPI, API_BASE_URL } from '../../services/api';
 
@@ -55,6 +55,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [volume, setVolume] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isRepeat, setIsRepeat] = useState(false);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mediaNatural, setMediaNatural] = useState({ width: 800, height: 600 });
@@ -118,19 +119,27 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     const handleLoadedMetadata = () => setDuration(video.duration);
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
+    const handleEnded = () => {
+      if (isRepeat) {
+        video.currentTime = 0;
+        video.play();
+      }
+    };
 
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
+    video.addEventListener('ended', handleEnded);
 
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
+      video.removeEventListener('ended', handleEnded);
     };
-  }, [file.id]);
+  }, [file.id, isRepeat]);
 
   // Функция для полноэкранного режима
   const toggleFullscreen = () => {
@@ -218,6 +227,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         if (e.key === 'm' || e.key === 'ь') {
           toggleMute();
         }
+        if (e.key === 'l' || e.key === 'д') {
+          toggleRepeat();
+        }
       }
 
       // Полноэкранный режим
@@ -253,7 +265,14 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleFullscreen();
+    
+    // Если это видео, переключаем полноэкранный режим
+    if (isVideo) {
+      toggleFullscreen();
+    } else {
+      // Для других типов файлов - обычный fullscreen
+      toggleFullscreen();
+    }
   };
 
   // Обработчик одиночного клика для определения двойного клика
@@ -468,6 +487,12 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     }
   };
 
+  const toggleRepeat = () => {
+    if (videoRef.current) {
+      setIsRepeat(!isRepeat);
+    }
+  };
+
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
@@ -601,7 +626,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             }
           }
         }}
-        onClick={isImage ? handleClick : undefined}
+        onClick={isImage ? handleClick : isVideo ? handleClick : undefined}
       >
         {/* Header - скрываем в полноэкранном режиме */}
         {!isFullscreen && (
@@ -803,6 +828,17 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
+                
+                {/* Кнопка повтора */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
+                  className={`control-button text-white hover:text-gray-300 transition-colors ${
+                    isRepeat ? 'text-purple-500' : ''
+                  }`}
+                  title={isRepeat ? 'Disable Repeat' : 'Enable Repeat'}
+                >
+                  <Repeat className={`w-4 h-4 ${isRepeat ? 'fill-current' : ''}`} />
+                </button>
                 
                 {/* Кнопка полноэкранного режима в контролах */}
                 <button

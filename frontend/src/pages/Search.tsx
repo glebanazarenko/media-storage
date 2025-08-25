@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search as SearchIcon, Filter, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
@@ -8,6 +8,7 @@ import { FileItem } from '../types';
 import { useApp } from '../contexts/AppContext';
 import { filesAPI, API_BASE_URL } from '../services/api';
 import { FileViewerModal } from '../components/files/FileViewerModal';
+import { useSearchParams } from 'react-router-dom';
 
 export const Search: React.FC = () => {
   const { t } = useTranslation();
@@ -24,6 +25,95 @@ export const Search: React.FC = () => {
     currentPage: 1
   });
   const [pageInput, setPageInput] = useState('');
+  
+  // Хук для работы с параметрами URL
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Получение параметров из URL
+  const getFiltersFromURL = useCallback(() => {
+    const query = searchParams.get('q') || '';
+    const category = searchParams.get('category') || 'all';
+    const page = parseInt(searchParams.get('page') || '1');
+    const sort = searchParams.get('sort') || 'date';
+    const order = searchParams.get('order') || 'desc';
+    const tags = searchParams.get('tags')?.split(',') || [];
+    const excludeTags = searchParams.get('exclude_tags')?.split(',') || [];
+    
+    return {
+      query,
+      category: category as 'all' | '0+' | '16+' | '18+',
+      page: isNaN(page) ? 1 : page,
+      sort: sort as 'date' | 'name' | 'size' | 'views' | 'downloads',
+      order: order as 'asc' | 'desc',
+      tags,
+      excludeTags
+    };
+  }, [searchParams]);
+
+  // Сохранение параметров в URL
+  const updateURLParams = useCallback((filters: Partial<ReturnType<typeof getFiltersFromURL>>) => {
+    const newParams = new URLSearchParams(searchParams.toString());
+    
+    if (filters.query !== undefined) {
+      if (filters.query) {
+        newParams.set('q', filters.query);
+      } else {
+        newParams.delete('q');
+      }
+    }
+    
+    if (filters.category !== undefined) {
+      newParams.set('category', filters.category);
+    }
+    
+    if (filters.page !== undefined) {
+      newParams.set('page', filters.page.toString());
+    }
+    
+    if (filters.sort !== undefined) {
+      newParams.set('sort', filters.sort);
+    }
+    
+    if (filters.order !== undefined) {
+      newParams.set('order', filters.order);
+    }
+    
+    if (filters.tags !== undefined) {
+      if (filters.tags.length > 0) {
+        newParams.set('tags', filters.tags.join(','));
+      } else {
+        newParams.delete('tags');
+      }
+    }
+    
+    if (filters.excludeTags !== undefined) {
+      if (filters.excludeTags.length > 0) {
+        newParams.set('exclude_tags', filters.excludeTags.join(','));
+      } else {
+        newParams.delete('exclude_tags');
+      }
+    }
+    
+    setSearchParams(newParams);
+  }, [searchParams, setSearchParams]);
+
+  // Инициализация из URL
+  useEffect(() => {
+    const urlFilters = getFiltersFromURL();
+    
+    setSearchQuery(urlFilters.query);
+    setSearchFilters(prev => ({
+      ...prev,
+      category: urlFilters.category,
+      sortBy: urlFilters.sort,
+      sortOrder: urlFilters.order,
+      tags: urlFilters.tags,
+      excludeTags: urlFilters.excludeTags
+    }));
+    
+    // Загружаем файлы с параметрами из URL
+    performSearch(urlFilters.page, urlFilters.query, urlFilters.category, urlFilters.tags, urlFilters.excludeTags, urlFilters.sort, urlFilters.order);
+  }, [getFiltersFromURL, setSearchFilters]);
 
   // Функция для преобразования данных из API в формат FileItem
   const transformFileData = (file: any): FileItem => {
@@ -57,24 +147,30 @@ export const Search: React.FC = () => {
     };
   };
 
-  // Обновленный эффект: выполняем поиск при изменении любого параметра
-  useEffect(() => {
-    performSearch(1);
-  }, [searchQuery, searchFilters]);
-
-  const performSearch = async (page: number = 1) => {
+  const performSearch = async (
+    page: number = 1,
+    query?: string,
+    category?: string,
+    includeTags?: string[],
+    excludeTags?: string[],
+    sortBy?: string,
+    sortOrder?: string
+  ) => {
     setLoading(true);
     try {
-      const response = await filesAPI.searchFiles({
-        query: searchQuery,
-        category: searchFilters.category,
-        includeTags: searchFilters.tags.join(','),
-        excludeTags: searchFilters.excludeTags.join(','),
-        sortBy: searchFilters.sortBy,
-        sortOrder: searchFilters.sortOrder,
+      const params: any = {
         page,
-        limit: 20,
-      });
+        limit: 20
+      };
+      
+      if (query) params.query = query;
+      if (category) params.category = category;
+      if (includeTags && includeTags.length > 0) params.includeTags = includeTags.join(',');
+      if (excludeTags && excludeTags.length > 0) params.excludeTags = excludeTags.join(',');
+      if (sortBy) params.sortBy = sortBy;
+      if (sortOrder) params.sortOrder = sortOrder;
+      
+      const response = await filesAPI.searchFiles(params);
 
       // Преобразуем данные перед установкой в состояние
       const transformedFiles = response.data.files.map(transformFileData);
@@ -92,6 +188,17 @@ export const Search: React.FC = () => {
       });
       setPageInput(response.data.page.toString());
       setLoading(false);
+      
+      // Обновляем URL после успешного поиска
+      updateURLParams({ 
+        page: response.data.page,
+        query,
+        category,
+        tags: includeTags,
+        excludeTags,
+        sort: sortBy,
+        order: sortOrder
+      });
     } catch (error) {
       console.error('Search error:', error);
       setLoading(false);
@@ -114,6 +221,9 @@ export const Search: React.FC = () => {
       sortOrder: 'desc'
     });
     setSearchQuery('');
+    // Сбрасываем URL параметры
+    const newParams = new URLSearchParams();
+    setSearchParams(newParams);
   };
 
   const handleFileView = (file: FileItem) => {
@@ -166,9 +276,14 @@ export const Search: React.FC = () => {
     }
   };
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    performSearch(1, searchQuery, searchFilters.category, searchFilters.tags, searchFilters.excludeTags, searchFilters.sortBy, searchFilters.sortOrder);
+  };
+
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= stats.pages && page !== stats.currentPage) {
-      performSearch(page);
+      performSearch(page, searchQuery, searchFilters.category, searchFilters.tags, searchFilters.excludeTags, searchFilters.sortBy, searchFilters.sortOrder);
     }
   };
 
@@ -247,7 +362,7 @@ export const Search: React.FC = () => {
         </div>
 
         {/* Search Bar */}
-        <div className="relative mb-6">
+        <form onSubmit={handleSearch} className="relative mb-6">
           <SearchIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
           <input
             type="text"
@@ -264,7 +379,7 @@ export const Search: React.FC = () => {
           >
             <Filter className="w-5 h-5" />
           </button>
-        </div>
+        </form>
 
         {/* Advanced Filters */}
         {showFilters && (

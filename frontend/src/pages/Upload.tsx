@@ -27,10 +27,15 @@ export const Upload: React.FC = () => {
 
   // Добавляем обработчик событий клавиатуры
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    let isMounted = true;
+    
+    const handleKeyDown = async (e: KeyboardEvent) => {
       // Проверяем, что нажата комбинация Ctrl+V
       if (e.ctrlKey && (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М')) {
-        handlePasteFromClipboard();
+        e.preventDefault();
+        if (isMounted) {
+          await handlePasteFromClipboard();
+        }
       }
     };
 
@@ -39,53 +44,84 @@ export const Upload: React.FC = () => {
     
     // Убираем слушатель при размонтировании компонента
     return () => {
+      isMounted = false;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
   // Функция для обработки вставки из буфера обмена
-  const handlePasteFromClipboard = async () => {
-    try {
-      // Проверяем поддержку Clipboard API
-      if (!navigator.clipboard) {
-        setError('Clipboard API not supported in your browser');
-        return;
+const handlePasteFromClipboard = async () => {
+  try {
+    // Проверяем поддержку Clipboard API
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      // Пробуем прочитать текст из буфера обмена как альтернативу
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
+          await handleMediaUrl(text);
+          return;
+        }
+      } catch (textErr) {
+        console.error('Error reading clipboard text:', textErr);
+        setError('Clipboard API not fully supported in your browser. Try copying URL text directly.');
       }
+      return;
+    }
 
-      // Читаем данные из буфера обмена
-      const clipboardItems = await navigator.clipboard.read();
-      
-      for (const clipboardItem of clipboardItems) {
-        // Проверяем, есть ли изображение в буфере обмена
-        for (const type of clipboardItem.types) {
-          if (type.startsWith('image/')) {
+    // Читаем данные из буфера обмена
+    const clipboardItems = await navigator.clipboard.read();
+    
+    for (const clipboardItem of clipboardItems) {
+      // Проверяем, есть ли изображение в буфере обмена
+      for (const type of clipboardItem.types) {
+        if (type.startsWith('image/')) {
+          try {
             const blob = await clipboardItem.getType(type);
             const file = new File([blob], `pasted-image-${Date.now()}.png`, { type });
             addFiles([file]);
             return;
+          } catch (blobErr) {
+            console.error('Error reading image from clipboard:', blobErr);
           }
         }
       }
-    } catch (err) {
-      console.error('Error reading clipboard items:', err);
     }
     
-    // Всегда пробуем прочитать текст из буфера обмена
+    // Если не нашли изображение, пробуем текст
     try {
       const text = await navigator.clipboard.readText();
       if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
-        // Это ссылка, проверяем является ли она медиа файлом
         await handleMediaUrl(text);
         return;
       }
     } catch (textErr) {
       console.error('Error reading clipboard text:', textErr);
-      setError('Failed to read clipboard content');
     }
-  };
+    
+  } catch (err) {
+    console.error('Error reading clipboard items:', err);
+    // Пробуем альтернативный метод - чтение текста
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
+        await handleMediaUrl(text);
+        return;
+      }
+    } catch (textErr) {
+      console.error('Error reading clipboard text as fallback:', textErr);
+      setError('Failed to read clipboard content. Try copying URL text directly.');
+    }
+  }
+};
 
   // Функция для обработки медиа ссылок через API
   const handleMediaUrl = async (url: string) => {
+    // Проверяем, что URL не пустой
+    if (!url || url.trim() === '') {
+      setError('Empty URL provided');
+      return;
+    }
+    
     try {
       setError('Downloading and processing media from URL...');
       
@@ -94,19 +130,17 @@ export const Upload: React.FC = () => {
       
       if (response.data?.id) {
         // Сервер уже обработал файл и сохранил его
-        // Получаем информацию о файле для отображения в интерфейсе
         try {
           const fileResponse = await filesAPI.getFile(response.data.id);
           if (fileResponse.data) {
             // Создаем фейковый файл объект для отображения в списке
-            // Этот файл уже существует на сервере, поэтому мы не будем загружать его снова
             const fakeFile = new File([new ArrayBuffer(0)], fileResponse.data.original_name || `downloaded-${Date.now()}`, {
               type: fileResponse.data.mime_type || 'application/octet-stream',
               lastModified: new Date(fileResponse.data.uploaded_at || Date.now()).getTime()
             }) as FileWithPreview;
             
             // Добавляем специальные свойства
-            fakeFile.id = response.data.id; // Используем реальный ID файла
+            fakeFile.id = response.data.id;
             fakeFile.originalFile = fakeFile;
             
             // Добавляем флаг, что файл уже загружен на сервер
@@ -115,11 +149,10 @@ export const Upload: React.FC = () => {
             
             setFiles(prev => [...prev, fakeFile]);
             setError('');
-            
             setSuccess(`Successfully added file from URL: ${fileResponse.data.original_name}`);
           }
-        } catch (err: any) {
-          console.error('Error getting file info:', err);
+        } catch (fileErr: any) {
+          console.error('Error getting file info:', fileErr);
           setError('File downloaded but failed to retrieve info');
         }
       } else {

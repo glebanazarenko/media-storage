@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Upload as UploadIcon, X, FileImage, FileVideo, FileAudio, FileText, FileArchive, AlertCircle } from 'lucide-react';
@@ -24,6 +24,113 @@ export const Upload: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Добавляем обработчик событий клавиатуры
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Проверяем, что нажата комбинация Ctrl+V
+      if (e.ctrlKey && (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М')) {
+        handlePasteFromClipboard();
+      }
+    };
+
+    // Добавляем слушатель событий
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Убираем слушатель при размонтировании компонента
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Функция для обработки вставки из буфера обмена
+  const handlePasteFromClipboard = async () => {
+    try {
+      // Проверяем поддержку Clipboard API
+      if (!navigator.clipboard) {
+        setError('Clipboard API not supported in your browser');
+        return;
+      }
+
+      // Читаем данные из буфера обмена
+      const clipboardItems = await navigator.clipboard.read();
+      
+      for (const clipboardItem of clipboardItems) {
+        // Проверяем, есть ли изображение в буфере обмена
+        for (const type of clipboardItem.types) {
+          if (type.startsWith('image/')) {
+            const blob = await clipboardItem.getType(type);
+            const file = new File([blob], `pasted-image-${Date.now()}.png`, { type });
+            addFiles([file]);
+            return;
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error reading clipboard items:', err);
+    }
+    
+    // Всегда пробуем прочитать текст из буфера обмена
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
+        // Это ссылка, проверяем является ли она медиа файлом
+        await handleMediaUrl(text);
+        return;
+      }
+    } catch (textErr) {
+      console.error('Error reading clipboard text:', textErr);
+      setError('Failed to read clipboard content');
+    }
+  };
+
+  // Функция для обработки медиа ссылок через API
+  const handleMediaUrl = async (url: string) => {
+    try {
+      setError('Downloading and processing media from URL...');
+      
+      // Отправляем URL на сервер для загрузки
+      const response = await filesAPI.downloadFromUrl(url);
+      
+      if (response.data?.id) {
+        // Сервер уже обработал файл и сохранил его
+        // Получаем информацию о файле для отображения в интерфейсе
+        try {
+          const fileResponse = await filesAPI.getFile(response.data.id);
+          if (fileResponse.data) {
+            // Создаем фейковый файл объект для отображения в списке
+            // Этот файл уже существует на сервере, поэтому мы не будем загружать его снова
+            const fakeFile = new File([new ArrayBuffer(0)], fileResponse.data.original_name || `downloaded-${Date.now()}`, {
+              type: fileResponse.data.mime_type || 'application/octet-stream',
+              lastModified: new Date(fileResponse.data.uploaded_at || Date.now()).getTime()
+            }) as FileWithPreview;
+            
+            // Добавляем специальные свойства
+            fakeFile.id = response.data.id; // Используем реальный ID файла
+            fakeFile.originalFile = fakeFile;
+            
+            // Добавляем флаг, что файл уже загружен на сервер
+            (fakeFile as any).alreadyUploaded = true;
+            (fakeFile as any).serverFileId = response.data.id;
+            
+            setFiles(prev => [...prev, fakeFile]);
+            setError('');
+            
+            setSuccess(`Successfully added file from URL: ${fileResponse.data.original_name}`);
+          }
+        } catch (err: any) {
+          console.error('Error getting file info:', err);
+          setError('File downloaded but failed to retrieve info');
+        }
+      } else {
+        setError('Unexpected server response');
+      }
+    } catch (err: any) {
+      console.error('Error downloading media:', err);
+      const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to download media from URL';
+      setError(`Download failed: ${errorMessage}`);
+    }
+  };
 
   // Безопасная функция для получения имени файла
   const getFileName = (file: File): string => {
@@ -59,6 +166,7 @@ export const Upload: React.FC = () => {
       case 'bmp':
       case 'webp':
       case 'svg':
+      case 'avif':
         return 'image';
       
       // Видео
@@ -211,10 +319,33 @@ export const Upload: React.FC = () => {
     
     let successCount = 0;
     let totalFiles = files.length;
+    let alreadyUploadedCount = 0;
 
     try {
       for (const file of files) {
         try {
+          // Проверяем, был ли файл уже загружен через URL
+          const alreadyUploaded = (file as any).alreadyUploaded;
+          const serverFileId = (file as any).serverFileId;
+          
+          if (alreadyUploaded && serverFileId) {
+            // Файл уже на сервере, просто обновляем его метаданные
+            setUploadProgress(prev => ({ ...prev, [file.id]: 0 }));
+            
+            // Обновляем метаданные существующего файла
+            await filesAPI.editFile(serverFileId, {
+              description: description,
+              category: category,
+              tagNames: tags.join(',')
+            });
+            
+            setUploadProgress(prev => ({ ...prev, [file.id]: 100 }));
+            successCount++;
+            alreadyUploadedCount++;
+            continue;
+          }
+          
+          // Обычная загрузка файла
           setUploadProgress(prev => ({ ...prev, [file.id]: 0 }));
           
           const formData = new FormData();
@@ -233,13 +364,18 @@ export const Upload: React.FC = () => {
           successCount++;
           
         } catch (error: any) {
-          console.error(`Error uploading ${getFileName(file)}:`, error);
-          setUploadProgress(prev => ({ ...prev, [file.id]: -1 })); // -1 indicates error
+          console.error(`Error processing ${getFileName(file)}:`, error);
+          setUploadProgress(prev => ({ ...prev, [file.id]: -1 }));
         }
       }
 
       if (successCount === totalFiles) {
-        setSuccess(`Successfully uploaded ${successCount} file${successCount !== 1 ? 's' : ''}!`);
+        const message = alreadyUploadedCount > 0 
+          ? `Successfully processed ${successCount} file${successCount !== 1 ? 's' : ''} (${alreadyUploadedCount} from URLs)!`
+          : `Successfully uploaded ${successCount} file${successCount !== 1 ? 's' : ''}!`;
+        
+        setSuccess(message);
+        
         // Reset form after successful upload
         setTimeout(() => {
           files.forEach(file => file.preview && URL.revokeObjectURL(file.preview));
@@ -250,12 +386,12 @@ export const Upload: React.FC = () => {
           navigate('/dashboard');
         }, 2000);
       } else if (successCount > 0) {
-        setSuccess(`Uploaded ${successCount} of ${totalFiles} files successfully.`);
+        setSuccess(`Processed ${successCount} of ${totalFiles} files successfully.`);
         if (successCount < totalFiles) {
-          setError(`Failed to upload ${totalFiles - successCount} file${totalFiles - successCount !== 1 ? 's' : ''}.`);
+          setError(`Failed to process ${totalFiles - successCount} file${totalFiles - successCount !== 1 ? 's' : ''}.`);
         }
       } else {
-        setError('Failed to upload any files. Please try again.');
+        setError('Failed to process any files. Please try again.');
       }
       
     } catch (error: any) {
@@ -310,6 +446,10 @@ export const Upload: React.FC = () => {
           <p className="text-slate-400">
             Upload and organize your media files
           </p>
+          {/* Добавляем подсказку для пользователя */}
+          <p className="text-slate-500 text-sm mt-2">
+            Tip: Press Ctrl+V to paste images or media URLs from clipboard
+          </p>
         </div>
 
         {error && (
@@ -356,6 +496,9 @@ export const Upload: React.FC = () => {
           >
             Select Files
           </label>
+          <p className="text-slate-500 text-sm mt-3">
+            Or press <kbd className="px-2 py-1 bg-slate-700 rounded">Ctrl</kbd> + <kbd className="px-2 py-1 bg-slate-700 rounded">V</kbd> to paste
+          </p>
         </div>
 
         {/* Selected Files */}

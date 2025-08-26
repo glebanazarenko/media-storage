@@ -22,6 +22,13 @@ from app.repositories.s3_repository import upload_file_to_s3
 from app.repositories.tag_repository import get_or_create_tags, get_tag_names_by_ids
 from app.schemas.file_schemas import FileCreate, FileResponse
 from app.services.s3_service import create_thumbnail_from_s3
+import requests
+import tempfile
+import os
+import time
+import mimetypes
+from urllib.parse import urlparse
+from fastapi import UploadFile, File, HTTPException
 
 SORT_FIELD_MAP = {"date": "created_at", "name": "original_name", "size": "size"}
 
@@ -285,7 +292,115 @@ def download_file_service(file_id: str, user_id: str) -> dict:
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+def download_file_from_url_service(url: str, current_user: User) -> FileResponse:
+    """
+    Сервис для загрузки файла по URL
+    """
+    try:
+        # Проверяем, что URL валидный
+        parsed_url = urlparse(url)
+        if not all([parsed_url.scheme, parsed_url.netloc]):
+            raise HTTPException(status_code=400, detail="Invalid URL format")
+        
+        # Скачиваем файл по URL
+        response = requests.get(url, timeout=30, stream=True)
+        response.raise_for_status()
+        
+        # Получаем имя файла из URL или заголовков
+        filename = _extract_filename_from_response(response, parsed_url)
+        
+        # Создаем временный файл
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            tmp_filename = tmp_file.name
+            # Записываем содержимое в временный файл
+            for chunk in response.iter_content(chunk_size=8192):
+                tmp_file.write(chunk)
+        
+        try:
+            # Обрабатываем загруженный файл
+            result = _process_downloaded_file(tmp_filename, filename, response, current_user)
+            return result
+            
+        finally:
+            # Удаляем временный файл
+            if os.path.exists(tmp_filename):
+                os.unlink(tmp_filename)
+                
+    except requests.RequestException as e:
+        raise HTTPException(status_code=400, detail=f"Failed to download file from URL: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to process downloaded file: {str(e)}")
 
+def _extract_filename_from_response(response: requests.Response, parsed_url) -> str:
+    """
+    Извлекает имя файла из ответа или URL
+    """
+    filename = None
+    if 'content-disposition' in response.headers:
+        content_disposition = response.headers['content-disposition']
+        if 'filename=' in content_disposition:
+            filename = content_disposition.split('filename=')[1].strip('"')
+    
+    if not filename:
+        # Пытаемся получить имя из URL
+        filename = os.path.basename(parsed_url.path)
+        
+    if not filename or filename == '':
+        # Генерируем имя, если не удалось определить
+        file_extension = mimetypes.guess_extension(response.headers.get('content-type', ''))
+        filename = f"downloaded_file_{int(time.time())}{file_extension or ''}"
+    
+    return filename
+
+def _process_downloaded_file(tmp_filename: str, filename: str, response: requests.Response, current_user: User) -> FileResponse:
+    """
+    Обрабатывает скачанный файл как обычную загрузку
+    """
+    # Получаем размер файла
+    file_size = os.path.getsize(tmp_filename)
+    
+    # Определяем MIME-тип
+    mime_type = response.headers.get('content-type', 'application/octet-stream')
+    if mime_type == 'application/octet-stream':
+        mime_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+
+    # Создаем UploadFile объект из временного файла
+    with open(tmp_filename, 'rb') as f:
+        # Создаем класс-обертку для файла с правильными атрибутами
+        class UploadFileWrapper:
+            def __init__(self, file_obj, filename, size, content_type):
+                self.file = file_obj
+                self.filename = filename
+                self.size = size
+                self.content_type = content_type
+                
+            def seek(self, offset, whence=0):
+                return self.file.seek(offset, whence)
+                
+            def read(self, size=-1):
+                return self.file.read(size)
+                
+            def tell(self):
+                return self.file.tell()
+
+        upload_file = UploadFileWrapper(
+            file_obj=f,
+            filename=filename,
+            size=file_size,
+            content_type=mime_type
+        )
+        
+        # Обрабатываем файл как обычную загрузку
+        result = save_file_metadata(
+            file=upload_file,
+            description=None,
+            tag_names="",
+            category_slug="0-plus",
+            owner=current_user,
+        )
+        
+        return result
 
 class FileMetadataService:
     @staticmethod

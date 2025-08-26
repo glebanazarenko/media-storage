@@ -30,6 +30,7 @@ from app.services.file_service import (
     search_files_service,
     stream_file_service,
     update_file_metadata,
+    download_file_from_url_service,
 )
 
 router = APIRouter(prefix="/files", tags=["Files"])
@@ -255,6 +256,27 @@ def download_file(
             headers=headers,
             media_type=file.mime_type or "application/octet-stream",
         )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/download-from-url", response_model=FileResponse)
+def download_file_from_url(
+    url_data: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """Загрузка файла по URL"""
+    try:
+        url = url_data.get("url")
+        if not url:
+            raise HTTPException(status_code=400, detail="URL is required")
+        
+        # Вызываем сервис для загрузки файла
+        result = download_file_from_url_service(url, current_user)
+        return result
+        
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

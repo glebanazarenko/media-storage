@@ -126,6 +126,9 @@ export const filesAPI = {
     limit?: number;
   }) => 
     api.get<{ files: FileItem[]; total: number; page: number; limit: number }>('/files/search', { params }),
+
+  downloadFromUrl: (url: string) => 
+    api.post('/files/download-from-url', { url }),
 };
 
 // Tags endpoints

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Upload as UploadIcon, X, FileImage, FileVideo, FileAudio, FileText, FileArchive, AlertCircle } from 'lucide-react';
@@ -25,13 +25,20 @@ export const Upload: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Определяем операционную систему
+  const isMac = useCallback(() => {
+    return navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  }, []);
+
   // Добавляем обработчик событий клавиатуры
   useEffect(() => {
     let isMounted = true;
     
     const handleKeyDown = async (e: KeyboardEvent) => {
-      // Проверяем, что нажата комбинация Ctrl+V
-      if (e.ctrlKey && (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М')) {
+      // Проверяем комбинацию Ctrl+V (Windows/Linux) или Cmd+V (Mac)
+      const isPaste = (isMac() ? e.metaKey : e.ctrlKey) && (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М');
+      
+      if (isPaste) {
         e.preventDefault();
         if (isMounted) {
           await handlePasteFromClipboard();
@@ -47,14 +54,47 @@ export const Upload: React.FC = () => {
       isMounted = false;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [isMac]);
 
   // Функция для обработки вставки из буфера обмена
-const handlePasteFromClipboard = async () => {
-  try {
-    // Проверяем поддержку Clipboard API
-    if (!navigator.clipboard || !navigator.clipboard.read) {
-      // Пробуем прочитать текст из буфера обмена как альтернативу
+  const handlePasteFromClipboard = async () => {
+    try {
+      // Проверяем поддержку Clipboard API
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        // Пробуем прочитать текст из буфера обмена как альтернативу
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
+            await handleMediaUrl(text);
+            return;
+          }
+        } catch (error: any) {
+          console.error('Error reading clipboard text:', error);
+          setError('Clipboard API not fully supported in your browser. Try copying URL text directly.');
+        }
+        return;
+      }
+
+      // Читаем данные из буфера обмена
+      const clipboardItems = await navigator.clipboard.read();
+      
+      for (const clipboardItem of clipboardItems) {
+        // Проверяем, есть ли изображение в буфере обмена
+        for (const type of clipboardItem.types) {
+          if (type.startsWith('image/')) {
+            try {
+              const blob = await clipboardItem.getType(type);
+              const file = new File([blob], `pasted-image-${Date.now()}.png`, { type });
+              addFiles([file]);
+              return;
+            } catch (blobErr) {
+              console.error('Error reading image from clipboard:', blobErr);
+            }
+          }
+        }
+      }
+      
+      // Если не нашли изображение, пробуем текст
       try {
         const text = await navigator.clipboard.readText();
         if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
@@ -63,56 +103,23 @@ const handlePasteFromClipboard = async () => {
         }
       } catch (textErr) {
         console.error('Error reading clipboard text:', textErr);
-        setError('Clipboard API not fully supported in your browser. Try copying URL text directly.');
       }
-      return;
-    }
-
-    // Читаем данные из буфера обмена
-    const clipboardItems = await navigator.clipboard.read();
-    
-    for (const clipboardItem of clipboardItems) {
-      // Проверяем, есть ли изображение в буфере обмена
-      for (const type of clipboardItem.types) {
-        if (type.startsWith('image/')) {
-          try {
-            const blob = await clipboardItem.getType(type);
-            const file = new File([blob], `pasted-image-${Date.now()}.png`, { type });
-            addFiles([file]);
-            return;
-          } catch (blobErr) {
-            console.error('Error reading image from clipboard:', blobErr);
-          }
+      
+    } catch (err) {
+      console.error('Error reading clipboard items:', err);
+      // Пробуем альтернативный метод - чтение текста
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
+          await handleMediaUrl(text);
+          return;
         }
+      } catch (textErr) {
+        console.error('Error reading clipboard text as fallback:', textErr);
+        setError('Failed to read clipboard content. Try copying URL text directly.');
       }
     }
-    
-    // Если не нашли изображение, пробуем текст
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
-        await handleMediaUrl(text);
-        return;
-      }
-    } catch (textErr) {
-      console.error('Error reading clipboard text:', textErr);
-    }
-    
-  } catch (err) {
-    console.error('Error reading clipboard items:', err);
-    // Пробуем альтернативный метод - чтение текста
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
-        await handleMediaUrl(text);
-        return;
-      }
-    } catch (textErr) {
-      console.error('Error reading clipboard text as fallback:', textErr);
-      setError('Failed to read clipboard content. Try copying URL text directly.');
-    }
-  }
-};
+  };
 
   // Функция для обработки медиа ссылок через API
   const handleMediaUrl = async (url: string) => {
@@ -265,8 +272,19 @@ const handlePasteFromClipboard = async () => {
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     const droppedFiles = Array.from(e.dataTransfer.files);
     addFiles(droppedFiles);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const addFiles = (newFiles: File[]) => {
@@ -481,7 +499,7 @@ const handlePasteFromClipboard = async () => {
           </p>
           {/* Добавляем подсказку для пользователя */}
           <p className="text-slate-500 text-sm mt-2">
-            Tip: Press Ctrl+V to paste images or media URLs from clipboard
+            Tip: Press {isMac() ? 'Cmd' : 'Ctrl'}+V to paste images or media URLs from clipboard
           </p>
         </div>
 
@@ -501,8 +519,8 @@ const handlePasteFromClipboard = async () => {
         {/* File Drop Zone */}
         <div
           onDrop={handleDrop}
-          onDragOver={(e) => e.preventDefault()}
-          onDragEnter={(e) => e.preventDefault()}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
           className="border-2 border-dashed border-slate-700 rounded-2xl p-12 text-center hover:border-purple-500 transition-colors duration-300 mb-6 bg-slate-900/50"
         >
           <UploadIcon className="w-16 h-16 text-slate-400 mx-auto mb-4" />
@@ -530,7 +548,7 @@ const handlePasteFromClipboard = async () => {
             Select Files
           </label>
           <p className="text-slate-500 text-sm mt-3">
-            Or press <kbd className="px-2 py-1 bg-slate-700 rounded">Ctrl</kbd> + <kbd className="px-2 py-1 bg-slate-700 rounded">V</kbd> to paste
+            Or press <kbd className="px-2 py-1 bg-slate-700 rounded">{isMac() ? 'Cmd' : 'Ctrl'}</kbd> + <kbd className="px-2 py-1 bg-slate-700 rounded">V</kbd> to paste
           </p>
         </div>
 

@@ -70,7 +70,7 @@ export const Upload: React.FC = () => {
           }
         } catch (error: any) {
           console.error('Error reading clipboard text:', error);
-          setError('Clipboard API not fully supported in your browser. Try copying URL text directly.');
+          setError(t('file.clipboardNotSupported'));
         }
         return;
       }
@@ -116,7 +116,7 @@ export const Upload: React.FC = () => {
         }
       } catch (textErr) {
         console.error('Error reading clipboard text as fallback:', textErr);
-        setError('Failed to read clipboard content. Try copying URL text directly.');
+        setError(t('file.clipboardReadFailed'));
       }
     }
   };
@@ -125,12 +125,12 @@ export const Upload: React.FC = () => {
   const handleMediaUrl = async (url: string) => {
     // Проверяем, что URL не пустой
     if (!url || url.trim() === '') {
-      setError('Empty URL provided');
+      setError(t('file.emptyUrl'));
       return;
     }
     
     try {
-      setError('Downloading and processing media from URL...');
+      setError(t('common.loading'));
       
       // Отправляем URL на сервер для загрузки
       const response = await filesAPI.downloadFromUrl(url);
@@ -156,19 +156,19 @@ export const Upload: React.FC = () => {
             
             setFiles(prev => [...prev, fakeFile]);
             setError('');
-            setSuccess(`Successfully added file from URL: ${fileResponse.data.original_name}`);
+            setSuccess(t('file.clipboardUrlSuccess', { filename: fileResponse.data.original_name }));
           }
         } catch (fileErr: any) {
           console.error('Error getting file info:', fileErr);
-          setError('File downloaded but failed to retrieve info');
+          setError(t('file.failedToUpdate'));
         }
       } else {
         setError('Unexpected server response');
       }
     } catch (err: any) {
       console.error('Error downloading media:', err);
-      const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to download media from URL';
-      setError(`Download failed: ${errorMessage}`);
+      const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || t('file.downloadFailed', { error: 'Unknown error' });
+      setError(t('file.downloadFailed', { error: errorMessage }));
     }
   };
 
@@ -320,13 +320,14 @@ export const Upload: React.FC = () => {
 
   const validateFiles = (): string | null => {
     if (files.length === 0) {
-      return 'Please select at least one file';
+      return t('file.noFilesFound');
     }
 
     const maxSize = 10000 * 1024 * 1024; // 10000MB
     const invalidFiles = files.filter(file => file.size > maxSize);
     if (invalidFiles.length > 0) {
-      return `Files too large: ${invalidFiles.map(f => getFileName(f)).join(', ')}. Maximum size is 10000MB.`;
+      const fileNames = invalidFiles.map(f => getFileName(f)).join(', ');
+      return t('file.filesTooLarge', { files: fileNames });
     }
 
     // Поддерживаемые типы файлов
@@ -337,7 +338,8 @@ export const Upload: React.FC = () => {
     });
     
     if (unsupportedFiles.length > 0) {
-      return `Unsupported file types: ${unsupportedFiles.map(f => getFileName(f)).join(', ')}`;
+      const fileNames = unsupportedFiles.map(f => getFileName(f)).join(', ');
+      return t('file.unsupportedTypes', { files: fileNames });
     }
 
     return null;
@@ -422,8 +424,15 @@ export const Upload: React.FC = () => {
 
       if (successCount === totalFiles) {
         const message = alreadyUploadedCount > 0 
-          ? `Successfully processed ${successCount} file${successCount !== 1 ? 's' : ''} (${alreadyUploadedCount} from URLs)!`
-          : `Successfully uploaded ${successCount} file${successCount !== 1 ? 's' : ''}!`;
+          ? t('file.uploadSuccess', { 
+              count: successCount, 
+              plural: successCount !== 1 ? 's' : '', 
+              urlCount: alreadyUploadedCount 
+            })
+          : t('file.uploadSuccessSimple', { 
+              count: successCount, 
+              plural: successCount !== 1 ? 's' : '' 
+            });
         
         setSuccess(message);
         
@@ -437,16 +446,19 @@ export const Upload: React.FC = () => {
           navigate('/dashboard');
         }, 2000);
       } else if (successCount > 0) {
-        setSuccess(`Processed ${successCount} of ${totalFiles} files successfully.`);
+        setSuccess(t('file.processedSuccess', { success: successCount, total: totalFiles }));
         if (successCount < totalFiles) {
-          setError(`Failed to process ${totalFiles - successCount} file${totalFiles - successCount !== 1 ? 's' : ''}.`);
+          setError(t('file.processedFailed', { 
+            count: totalFiles - successCount, 
+            plural: totalFiles - successCount !== 1 ? 's' : '' 
+          }));
         }
       } else {
-        setError('Failed to process any files. Please try again.');
+        setError(t('file.processedAllFailed'));
       }
       
     } catch (error: any) {
-      setError(error.response?.data?.message || 'Upload failed. Please try again.');
+      setError(error.response?.data?.message || t('file.uploadFailed'));
     } finally {
       setUploading(false);
     }
@@ -487,6 +499,18 @@ export const Upload: React.FC = () => {
 
   const getFileProgress = (fileId: string) => uploadProgress[fileId] || 0;
 
+  const getSelectedFilesText = () => {
+    return t('file.selectedFiles', { count: files.length });
+  };
+
+  const getUploadButtonText = () => {
+    const count = files.length;
+    return t('file.uploadButton', { 
+      count, 
+      plural: count !== 1 ? 's' : '' 
+    });
+  };
+
   return (
     <Layout>
       <div className="p-6 max-w-4xl mx-auto">
@@ -495,11 +519,11 @@ export const Upload: React.FC = () => {
             {t('file.upload')}
           </h1>
           <p className="text-slate-400">
-            Upload and organize your media files
+            {t('file.organizeMedia')}
           </p>
           {/* Добавляем подсказку для пользователя */}
           <p className="text-slate-500 text-sm mt-2">
-            Tip: Press {isMac() ? 'Cmd' : 'Ctrl'}+V to paste images or media URLs from clipboard
+            {t('file.pasteTip', { key: isMac() ? 'Cmd' : 'Ctrl' })}
           </p>
         </div>
 
@@ -525,10 +549,10 @@ export const Upload: React.FC = () => {
         >
           <UploadIcon className="w-16 h-16 text-slate-400 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">
-            Drop files here or click to browse
+            {t('file.dropHere')}
           </h3>
           <p className="text-slate-400 mb-4">
-            Support for images, videos and audio files (max 10GB each)
+            {t('file.supportedTypes')}
           </p>
           <input
             type="file"
@@ -545,10 +569,10 @@ export const Upload: React.FC = () => {
               uploading ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
-            Select Files
+            {t('file.selectFiles')}
           </label>
           <p className="text-slate-500 text-sm mt-3">
-            Or press <kbd className="px-2 py-1 bg-slate-700 rounded">{isMac() ? 'Cmd' : 'Ctrl'}</kbd> + <kbd className="px-2 py-1 bg-slate-700 rounded">V</kbd> to paste
+            {t('file.pasteTip', { key: isMac() ? 'Cmd' : 'Ctrl' })}
           </p>
         </div>
 
@@ -556,7 +580,7 @@ export const Upload: React.FC = () => {
         {files.length > 0 && (
           <div className="bg-slate-900 rounded-xl p-6 mb-6">
             <h3 className="text-lg font-semibold text-white mb-4">
-              Selected Files ({files.length})
+              {getSelectedFilesText()}
             </h3>
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {files.map((file) => {
@@ -595,7 +619,7 @@ export const Upload: React.FC = () => {
                         )}
                         
                         {hasError && (
-                          <p className="text-red-400 text-sm mt-1">Upload failed</p>
+                          <p className="text-red-400 text-sm mt-1">{t('common.error')}</p>
                         )}
                       </div>
                     </div>
@@ -617,7 +641,7 @@ export const Upload: React.FC = () => {
 
         {/* File Details Form */}
         <div className="bg-slate-900 rounded-xl p-6 space-y-6">
-          <h3 className="text-lg font-semibold text-white">File Details</h3>
+          <h3 className="text-lg font-semibold text-white">{t('file.fileDetails')}</h3>
 
           {/* Description */}
           <div>
@@ -630,7 +654,7 @@ export const Upload: React.FC = () => {
               rows={3}
               disabled={uploading}
               className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/50 resize-none disabled:opacity-50"
-              placeholder="Add a description for your files..."
+              placeholder={t('file.addDescription')}
             />
           </div>
 
@@ -643,7 +667,7 @@ export const Upload: React.FC = () => {
               tags={tags}
               onTagsChange={setTags}
               category={category}
-              placeholder="Add tags (e.g., nature, portrait, -unwanted)"
+              placeholder={t('file.addTags')}
             />
           </div>
 
@@ -673,7 +697,7 @@ export const Upload: React.FC = () => {
               ))}
             </div>
             <p className="text-xs text-slate-400 mt-2">
-              Choose the appropriate content rating for your files
+              {t('file.chooseRating')}
             </p>
           </div>
 
@@ -687,10 +711,10 @@ export const Upload: React.FC = () => {
               {uploading ? (
                 <div className="flex items-center justify-center">
                   <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                  Uploading...
+                  {t('file.uploading')}
                 </div>
               ) : (
-                `Upload ${files.length} File${files.length !== 1 ? 's' : ''}`
+                getUploadButtonText()
               )}
             </button>
             
@@ -699,7 +723,7 @@ export const Upload: React.FC = () => {
               disabled={uploading}
               className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </div>

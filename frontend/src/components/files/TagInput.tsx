@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Plus, Minus } from 'lucide-react';
 import { tagsAPI } from '../../services/api';
 import { Tag } from '../../types';
@@ -18,6 +19,7 @@ export const TagInput: React.FC<TagInputProps> = ({
   allowNegative = true,
   category
 }) => {
+  const { t } = useTranslation();
   const [inputValue, setInputValue] = useState('');
   const [suggestions, setSuggestions] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(false);
@@ -32,7 +34,6 @@ export const TagInput: React.FC<TagInputProps> = ({
         setShowSuggestions(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
@@ -57,7 +58,6 @@ export const TagInput: React.FC<TagInputProps> = ({
         setShowSuggestions(false);
       }
     };
-
     const timeoutId = setTimeout(searchTags, 300);
     return () => clearTimeout(timeoutId);
   }, [inputValue]);
@@ -120,7 +120,6 @@ export const TagInput: React.FC<TagInputProps> = ({
             </button>
           </div>
         ))}
-        
         <input
           ref={inputRef}
           type="text"
@@ -128,10 +127,9 @@ export const TagInput: React.FC<TagInputProps> = ({
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => inputValue && setShowSuggestions(true)}
-          placeholder={tags.length === 0 ? placeholder : ''}
+          placeholder={tags.length === 0 ? t('tag.add') : ''}
           className="flex-1 bg-transparent border-none outline-none text-white placeholder-slate-400 min-w-[120px] py-1"
         />
-        
         {inputValue && (
           <button
             onClick={() => addTag()}
@@ -142,7 +140,6 @@ export const TagInput: React.FC<TagInputProps> = ({
           </button>
         )}
       </div>
-
       {/* Suggestions Dropdown */}
       {showSuggestions && suggestions.length > 0 && (
         <div
@@ -152,15 +149,13 @@ export const TagInput: React.FC<TagInputProps> = ({
           {loading && (
             <div className="flex items-center justify-center py-3">
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-purple-500 border-t-transparent"></div>
-              <span className="ml-2 text-slate-400 text-sm">Searching...</span>
+              <span className="ml-2 text-slate-400 text-sm">{t('file.searching')}</span>
             </div>
           )}
-          
           {!loading && suggestions.map((suggestion, index) => {
             const isNegative = inputValue.startsWith('-');
             const suggestionText = isNegative ? `-${suggestion.name}` : suggestion.name;
             const isAlreadyAdded = tags.includes(suggestionText);
-            
             return (
               <button
                 key={`${suggestion.id}-${index}`}

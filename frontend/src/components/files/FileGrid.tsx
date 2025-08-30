@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileItem } from '../../types';
 import { FileCard } from './FileCard';
 
@@ -17,6 +18,8 @@ export const FileGrid: React.FC<FileGridProps> = ({
   onView,
   loading = false,
 }) => {
+  const { t } = useTranslation();
+
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
@@ -45,8 +48,8 @@ export const FileGrid: React.FC<FileGridProps> = ({
         <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
           <span className="text-2xl">📁</span>
         </div>
-        <h3 className="text-xl font-semibold text-white mb-2">No files found</h3>
-        <p className="text-slate-400 mb-6">Upload some files or adjust your filters to see content here.</p>
+        <h3 className="text-xl font-semibold text-white mb-2">{t('file.noFilesFound')}</h3>
+        <p className="text-slate-400 mb-6">{t('file.noFilesFoundMessage')}</p>
       </div>
     );
   }

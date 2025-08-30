@@ -271,7 +271,7 @@ export const Search: React.FC = () => {
           handleCloseViewer();
         }
       } catch (error: any) {
-        alert(error.response?.data?.message || 'Failed to delete file');
+        alert(error.response?.data?.message || t('file.failedToUpdate'));
       }
     }
   };
@@ -313,11 +313,11 @@ export const Search: React.FC = () => {
           disabled={stats.currentPage <= 1 || loading}
           className="px-3 py-1 bg-slate-800 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors text-sm"
         >
-          Previous
+          {t('file.previous')}
         </button>
 
         <div className="flex items-center space-x-1">
-          <span className="text-slate-400 text-sm">Page</span>
+          <span className="text-slate-400 text-sm">{t('file.page')}</span>
           <input
             type="number"
             min="1"
@@ -335,7 +335,7 @@ export const Search: React.FC = () => {
             }}
             className="w-10 px-2 py-1 bg-slate-800 border border-slate-700 text-white rounded text-sm focus:outline-none focus:border-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
-          <span className="text-slate-400 text-sm">of {stats.pages}</span>
+          <span className="text-slate-400 text-sm">{t('file.of')} {stats.pages}</span>
         </div>
 
         <button
@@ -343,10 +343,21 @@ export const Search: React.FC = () => {
           disabled={stats.currentPage >= stats.pages || loading}
           className="px-3 py-1 bg-slate-800 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors text-sm"
         >
-          Next
+          {t('file.next')}
         </button>
       </div>
     );
+  };
+
+  const getResultsTitle = () => {
+    if (searchQuery) {
+      return t('file.searchResults', { query: searchQuery });
+    }
+    return t('file.recentFiles');
+  };
+
+  const getFileCountText = () => {
+    return t('file.filesTotal', { count: stats.total });
   };
 
   return (
@@ -357,7 +368,7 @@ export const Search: React.FC = () => {
             {t('nav.search')}
           </h1>
           <p className="text-slate-400">
-            Search and filter your media collection
+            {t('file.searchMedia')}
           </p>
         </div>
 
@@ -372,6 +383,7 @@ export const Search: React.FC = () => {
             className="w-full pl-12 pr-12 py-4 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/50"
           />
           <button
+            type="button"
             onClick={() => setShowFilters(!showFilters)}
             className={`absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-colors ${
               showFilters ? 'bg-purple-500 text-white' : 'text-slate-400 hover:text-white'
@@ -438,8 +450,8 @@ export const Search: React.FC = () => {
                   onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500"
                 >
-                  <option value="desc">Descending</option>
-                  <option value="asc">Ascending</option>
+                  <option value="desc">{t('file.descending')}</option>
+                  <option value="asc">{t('file.ascending')}</option>
                 </select>
               </div>
 
@@ -451,7 +463,7 @@ export const Search: React.FC = () => {
                 <TagInput
                   tags={searchFilters.tags}
                   onTagsChange={(tags) => handleFilterChange('tags', tags)}
-                  placeholder="Include tags..."
+                  placeholder={t('tag.add')}
                   allowNegative={false}
                 />
               </div>
@@ -464,7 +476,7 @@ export const Search: React.FC = () => {
                 <TagInput
                   tags={searchFilters.excludeTags}
                   onTagsChange={(tags) => handleFilterChange('excludeTags', tags)}
-                  placeholder="Exclude tags..."
+                  placeholder={t('tag.add')}
                   allowNegative={false}
                 />
               </div>
@@ -477,11 +489,11 @@ export const Search: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
               <h2 className="text-xl font-semibold text-white">
-                {searchQuery ? `Search Results for "${searchQuery}"` : 'Recent Files'}
+                {getResultsTitle()}
               </h2>
               {stats.total > 0 && (
                 <span className="text-slate-400 whitespace-nowrap">
-                  {stats.total} files total
+                  {getFileCountText()}
                 </span>
               )}
             </div>

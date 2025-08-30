@@ -7,7 +7,6 @@ import { useApp } from '../contexts/AppContext';
 import { usersAPI } from '../services/api';
 import { BackupSection } from '../components/settings/BackupSection';
 
-
 export const Settings: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
@@ -56,9 +55,9 @@ export const Settings: React.FC = () => {
     
     try {
       await usersAPI.updateProfile(profile);
-      setSuccess('Profile updated successfully!');
+      setSuccess(t('settings.profileUpdated'));
     } catch (error: any) {
-      setError(error.response?.data?.message || 'Failed to update profile');
+      setError(error.response?.data?.message || t('settings.failedToUpdate'));
     } finally {
       setLoading(false);
     }
@@ -76,6 +75,13 @@ export const Settings: React.FC = () => {
     setPreferences(prev => ({ ...prev, autoBlur: newBlur }));
   };
 
+  const getMemberSince = () => {
+    if (user?.created_at) {
+      return new Date(user.created_at).getFullYear();
+    }
+    return '-';
+  };
+
   return (
     <Layout>
       <div className="p-6 max-w-4xl mx-auto">
@@ -84,7 +90,7 @@ export const Settings: React.FC = () => {
             {t('nav.settings')}
           </h1>
           <p className="text-slate-400">
-            Manage your account and application preferences
+            {t('settings.manageAccount')}
           </p>
         </div>
 
@@ -105,14 +111,14 @@ export const Settings: React.FC = () => {
           <div className="bg-slate-900 rounded-xl p-6">
             <div className="flex items-center space-x-3 mb-6">
               <User className="w-6 h-6 text-purple-400" />
-              <h2 className="text-xl font-semibold text-white">Profile</h2>
+              <h2 className="text-xl font-semibold text-white">{t('settings.profile')}</h2>
             </div>
 
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-200 mb-2">
-                    Username
+                    {t('auth.username')}
                   </label>
                   <input
                     type="text"
@@ -124,7 +130,7 @@ export const Settings: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-200 mb-2">
-                    Email
+                    {t('auth.email')}
                   </label>
                   <input
                     type="email"
@@ -144,7 +150,7 @@ export const Settings: React.FC = () => {
                   onChange={(e) => setProfile(prev => ({ ...prev, bio: e.target.value }))}
                   rows={3}
                   className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/50 resize-none"
-                  placeholder="Tell us about yourself..."
+                  placeholder={t('settings.tellAbout')}
                 />
               </div>
 
@@ -154,7 +160,7 @@ export const Settings: React.FC = () => {
                 className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 disabled:opacity-50"
               >
                 <Save className="w-5 h-5" />
-                <span>{loading ? 'Saving...' : 'Save Profile'}</span>
+                <span>{loading ? t('common.loading') : t('common.save')}</span>
               </button>
             </div>
           </div>
@@ -163,13 +169,13 @@ export const Settings: React.FC = () => {
           <div className="bg-slate-900 rounded-xl p-6">
             <div className="flex items-center space-x-3 mb-6">
               <Languages className="w-6 h-6 text-purple-400" />
-              <h2 className="text-xl font-semibold text-white">Language & Localization</h2>
+              <h2 className="text-xl font-semibold text-white">{t('settings.languageLocalization')}</h2>
             </div>
 
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-3">
-                  Interface Language
+                  {t('settings.interfaceLanguage')}
                 </label>
                 <div className="flex space-x-4">
                   <button
@@ -201,14 +207,14 @@ export const Settings: React.FC = () => {
           <div className="bg-slate-900 rounded-xl p-6">
             <div className="flex items-center space-x-3 mb-6">
               <Eye className="w-6 h-6 text-purple-400" />
-              <h2 className="text-xl font-semibold text-white">Content Preferences</h2>
+              <h2 className="text-xl font-semibold text-white">{t('settings.contentPreferences')}</h2>
             </div>
 
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-white font-medium">Blur Adult Content</h3>
-                  <p className="text-slate-400 text-sm">Automatically blur 16+ and 18+ content</p>
+                  <h3 className="text-white font-medium">{t('settings.blurAdult')}</h3>
+                  <p className="text-slate-400 text-sm">{t('settings.blurAdultDesc')}</p>
                 </div>
                 <button
                   onClick={handleBlurToggle}
@@ -226,7 +232,7 @@ export const Settings: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-3">
-                  Default Category Filter
+                  {t('settings.defaultCategory')}
                 </label>
                 <select
                   value={preferences.defaultCategory}
@@ -236,10 +242,10 @@ export const Settings: React.FC = () => {
                   }))}
                   className="w-full max-w-xs px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500"
                 >
-                  <option value="all">All Content</option>
-                  <option value="0+">0+ Only</option>
-                  <option value="16+">16+ and Below</option>
-                  <option value="18+">All Categories</option>
+                  <option value="all">{t('settings.allContent')}</option>
+                  <option value="0+">{t('settings.only0')}</option>
+                  <option value="16+">{t('settings.below16')}</option>
+                  <option value="18+">{t('settings.allCategories')}</option>
                 </select>
               </div>
             </div>
@@ -249,14 +255,14 @@ export const Settings: React.FC = () => {
           <div className="bg-slate-900 rounded-xl p-6">
             <div className="flex items-center space-x-3 mb-6">
               <Palette className="w-6 h-6 text-purple-400" />
-              <h2 className="text-xl font-semibold text-white">App Preferences</h2>
+              <h2 className="text-xl font-semibold text-white">{t('settings.appPreferences')}</h2>
             </div>
 
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-white font-medium">Notifications</h3>
-                  <p className="text-slate-400 text-sm">Receive notifications about uploads and activity</p>
+                  <h3 className="text-white font-medium">{t('settings.notifications')}</h3>
+                  <p className="text-slate-400 text-sm">{t('settings.notificationsDesc')}</p>
                 </div>
                 <button
                   onClick={() => setPreferences(prev => ({ ...prev, notifications: !prev.notifications }))}
@@ -274,16 +280,16 @@ export const Settings: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-3">
-                  Theme
+                  {t('settings.theme')}
                 </label>
                 <select
                   value={preferences.theme}
                   onChange={(e) => setPreferences(prev => ({ ...prev, theme: e.target.value }))}
                   className="w-full max-w-xs px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500"
                 >
-                  <option value="dark">Dark Theme</option>
-                  <option value="light">Light Theme</option>
-                  <option value="auto">Auto (System)</option>
+                  <option value="dark">{t('settings.darkTheme')}</option>
+                  <option value="light">{t('settings.lightTheme')}</option>
+                  <option value="auto">{t('settings.autoTheme')}</option>
                 </select>
               </div>
             </div>
@@ -292,31 +298,30 @@ export const Settings: React.FC = () => {
           {/* Account Stats */}
           {user && (
             <div className="bg-slate-900 rounded-xl p-6">
-              <h2 className="text-xl font-semibold text-white mb-6">Account Information</h2>
+              <h2 className="text-xl font-semibold text-white mb-6">{t('settings.accountInfo')}</h2>
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-400">-</div>
-                  <div className="text-slate-400 text-sm">Files Uploaded</div>
+                  <div className="text-slate-400 text-sm">{t('settings.filesUploaded')}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-400">-</div>
-                  <div className="text-slate-400 text-sm">Total Views</div>
+                  <div className="text-slate-400 text-sm">{t('settings.totalViews')}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-400">-</div>
-                  <div className="text-slate-400 text-sm">Collections</div>
+                  <div className="text-slate-400 text-sm">{t('settings.collections')}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-purple-400">
-                    {new Date(user.created_at).getFullYear()}
+                    {getMemberSince()}
                   </div>
-                  <div className="text-slate-400 text-sm">Member Since</div>
+                  <div className="text-slate-400 text-sm">{t('settings.memberSince')}</div>
                 </div>
               </div>
             </div>
           )}
-
 
           {/* Data Backup & Restore */}
           <BackupSection userId={user?.id || ''} />

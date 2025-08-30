@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Repeat } from 'lucide-react';
 import { FileItem } from '../../types';
 import { filesAPI, API_BASE_URL } from '../../services/api';
@@ -20,30 +21,26 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   hasNext,
   hasPrev
 }) => {
+  const { t } = useTranslation();
   const modalRef = useRef<HTMLDivElement>(null);
   const mediaRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
-
   // Панорамирование — только для изображений
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-
   // Touch события для мобильных устройств
   const [touchStart, setTouchStart] = useState<{ x: number; y: number; distance: number } | null>(null);
   const [touchPanOffset, setTouchPanOffset] = useState({ x: 0, y: 0 });
-
   // Для свайпов в полноэкранном режиме
   const [touchStartX, setTouchStartX] = useState(0);
   const [touchEndX, setTouchEndX] = useState(0);
   const [swipeStartZone, setSwipeStartZone] = useState<'left' | 'right' | null>(null);
-
   // Для видео
   const [videoZoom, setVideoZoom] = useState(1);
   const [videoPanOffset, setVideoPanOffset] = useState({ x: 0, y: 0 });
@@ -56,11 +53,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isRepeat, setIsRepeat] = useState(false);
-
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mediaNatural, setMediaNatural] = useState({ width: 800, height: 600 });
   const [videoNatural, setVideoNatural] = useState({ width: 800, height: 450 });
-
   // Для двойного клика
   const [lastClickTime, setLastClickTime] = useState(0);
   const [lastClickPosition, setLastClickPosition] = useState({ x: 0, y: 0 });
@@ -114,7 +109,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
     const handleTimeUpdate = () => setCurrentTime(video.currentTime);
     const handleLoadedMetadata = () => setDuration(video.duration);
     const handlePlay = () => setIsPlaying(true);
@@ -125,13 +119,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         video.play();
       }
     };
-
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
-
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -144,7 +136,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   // Функция для полноэкранного режима
   const toggleFullscreen = () => {
     if (!fullscreenContainerRef.current) return;
-
     try {
       if (!document.fullscreenElement) {
         if (fullscreenContainerRef.current.requestFullscreen) {
@@ -169,12 +160,10 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
-
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
     document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
@@ -196,7 +185,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
       }
       if ((e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a' || e.key === 'ф') && hasPrev && onPrev) onPrev();
       if ((e.key === 'ArrowRight' || e.key.toLowerCase() === 'd' || e.key === 'в') && hasNext && onNext) onNext();
-
       // Увеличение/уменьшение — только для изображений и видео
       if (isImage || isVideo) {
         if (e.key === '+' || e.key === '=' || e.key === ']') {
@@ -217,7 +205,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           resetView();
         }
       }
-
       // Управление видео
       if (isVideo) {
         if (e.key === ' ') {
@@ -231,7 +218,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           toggleRepeat();
         }
       }
-
       // Полноэкранный режим
       if (e.key.toLowerCase() === 'f' || e.key === 'а' || e.key === 'F' || e.key === 'А') {
         e.preventDefault();
@@ -260,12 +246,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     setIsPanning(true);
     setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
   };
-  
+
   // Обработчик двойного клика
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
     // Если это видео, переключаем полноэкранный режим
     if (isVideo) {
       toggleFullscreen();
@@ -279,7 +264,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const handleClick = (e: React.MouseEvent) => {
     const now = Date.now();
     const clickPosition = { x: e.clientX, y: e.clientY };
-    
     // Проверяем, является ли это двойным кликом (время между кликами < 300ms и позиция близкая)
     if (now - lastClickTime < 300 && 
         Math.abs(clickPosition.x - lastClickPosition.x) < 10 && 
@@ -311,12 +295,12 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
       setPanOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
     }
   };
+
   const onMouseUp = () => setIsPanning(false);
 
   // Touch события для мобильных устройств
   const onTouchStart = (e: React.TouchEvent) => {
     if (!isImage || e.touches.length === 0) return;
-    
     if (e.touches.length === 1) {
       // Один палец - панорамирование
       setIsPanning(true);
@@ -344,7 +328,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     if (!isImage) return;
     e.preventDefault();
     e.stopPropagation();
-
     if (e.touches.length === 1 && isPanning) {
       // Панорамирование одним пальцем
       setPanOffset({ 
@@ -359,16 +342,13 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         Math.pow(touch2.clientX - touch1.clientX, 2) + 
         Math.pow(touch2.clientY - touch1.clientY, 2)
       );
-      
       // Уменьшаем чувствительность зума в 6 раз (2 * 3)
       const scale = (distance / touchStart.distance) * 0.167 + 0.833;
       const newZoom = Math.max(0.2, Math.min(5, zoom * scale));
       setZoom(newZoom);
-      
       // Панорамирование при зуме с уменьшенной чувствительностью в 9 раз (3 * 3)
       const centerX = (touch1.clientX + touch2.clientX) / 2;
       const centerY = (touch1.clientY + touch2.clientY) / 2;
-      
       setTouchPanOffset({
         x: (centerX - touchStart.x) * 0.1, // Уменьшаем чувствительность панорамирования в 9 раз
         y: (centerY - touchStart.y) * 0.1
@@ -384,11 +364,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   // Обработчики свайпов в полноэкранном режиме
   const handleFullscreenTouchStart = (e: React.TouchEvent) => {
     if (!isFullscreen) return;
-    
     const touchX = e.targetTouches[0].clientX;
     const screenWidth = window.innerWidth;
     const zoneWidth = screenWidth * 0.2; // 20% экрана
-    
     // Определяем зону начала свайпа
     if (touchX <= zoneWidth) {
       setSwipeStartZone('left');
@@ -397,7 +375,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     } else {
       setSwipeStartZone(null);
     }
-    
     setTouchStartX(touchX);
   };
 
@@ -408,10 +385,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
 
   const handleFullscreenTouchEnd = () => {
     if (!isFullscreen || !swipeStartZone) return;
-    
     const swipeThreshold = 50; // Минимальная дистанция свайпа в пикселях
     const deltaX = touchEndX - touchStartX;
-    
     if (swipeStartZone === 'left' && deltaX < swipeThreshold) {
       // Свайп вправо из левой зоны - предыдущий файл
       if (hasPrev && onPrev) {
@@ -423,7 +398,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         onNext();
       }
     }
-    
     // Сбрасываем зону
     setSwipeStartZone(null);
   };
@@ -435,12 +409,14 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     setIsVideoPanning(true);
     setVideoPanStart({ x: e.clientX - videoPanOffset.x, y: e.clientY - videoPanOffset.y });
   };
+
   const onVideoMouseMove = (e: MouseEvent) => {
     if (!isVideo || !isVideoPanning) return;
     e.preventDefault();
     e.stopPropagation(); // Предотвращаем прокрутку фона
     setVideoPanOffset({ x: e.clientX - videoPanStart.x, y: e.clientY - videoPanStart.y });
   };
+
   const onVideoMouseUp = () => setIsVideoPanning(false);
 
   useEffect(() => {
@@ -536,10 +512,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   useEffect(() => {
     const body = document.body;
     const originalOverflow = body.style.overflow;
-    
     // Блокируем прокрутку
     body.style.overflow = 'hidden';
-    
     return () => {
       // Возвращаем оригинальное состояние
       body.style.overflow = originalOverflow;
@@ -581,7 +555,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           <ChevronRight className="w-12 h-12" />
         </button>
       )}
-
       {/* Коробка: сетка [header | content | footer] */}
       <div
         ref={fullscreenContainerRef}
@@ -639,7 +612,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 {file.category_name} • {formatFileSize(file.file_size)}
               </p>
             </div>
-
             <div className="flex items-center space-x-1 ml-2">
               {/* Зум/ротация показываем только для изображений и видео */}
               {(isImage || isVideo) && (
@@ -651,7 +623,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                       if (isImage) setZoom(z => Math.max(z / 1.2, 0.2));
                       if (isVideo) setVideoZoom(z => Math.max(z / 1.2, 0.2));
                     }}
-                    title="Zoom Out (-, [, колесо)"
+                    title={t('file.viewer.zoomOut')}
                   >
                     <ZoomOut className="w-4 h-4" />
                   </button>
@@ -665,7 +637,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                       if (isImage) setZoom(z => Math.min(z * 1.2, 5));
                       if (isVideo) setVideoZoom(z => Math.min(z * 1.2, 5));
                     }}
-                    title="Zoom In (+, ], колесо)"
+                    title={t('file.viewer.zoomIn')}
                   >
                     <ZoomIn className="w-4 h-4" />
                   </button>
@@ -676,14 +648,14 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                       if (isImage) setRotation(r => (r + 90) % 360);
                       if (isVideo) setVideoRotation(r => (r + 90) % 360);
                     }}
-                    title="Rotate (R)"
+                    title={t('file.viewer.rotate')}
                   >
                     <RotateCw className="w-4 h-4" />
                   </button>
                   <button
                     className="control-button p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
                     onClick={(e) => { e.stopPropagation(); resetView(); }}
-                    title="Reset View (Q, Й)"
+                    title={t('file.viewer.resetView')}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -691,32 +663,30 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   </button>
                 </>
               )}
-
               <button
                 className="control-button p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
                 onClick={(e) => { e.stopPropagation(); handleDownload(); }}
-                title="Download"
+                title={t('file.viewer.download')}
               >
                 <Download className="w-4 h-4" />
               </button>
               <button
                 className="control-button p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
                 onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
-                title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                title={isFullscreen ? t('file.viewer.exitFullscreen') : t('file.viewer.fullscreen')}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
               </button>
               <button
                 className="control-button p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
-                title="Close (Esc)"
+                title={t('file.viewer.close')}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
         )}
-
         {/* Контент (медиа) */}
         <div
           ref={mediaRef}
@@ -750,7 +720,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               />
             </div>
           )}
-
           {isVideo && (
             <div className="relative w-full h-full flex flex-col">
               <div 
@@ -783,7 +752,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   />
                 </div>
               </div>
-              
               {/* Видео контролы - скрываем в полноэкранном режиме при наведении */}
               <div className={`video-controls bg-gray-900/90 backdrop-blur-sm p-2 flex items-center space-x-2 transition-opacity duration-300 ${
                 isFullscreen ? 'opacity-0 hover:opacity-100' : ''
@@ -791,10 +759,10 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 <button
                   onClick={(e) => { e.stopPropagation(); togglePlay(); }}
                   className="control-button text-white hover:text-gray-300 transition-colors"
+                  title={isPlaying ? t('file.viewer.pause') : t('file.viewer.play')}
                 >
                   {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                 </button>
-                
                 <div className="flex-1 flex items-center space-x-2">
                   <input
                     type="range"
@@ -809,11 +777,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                     {formatTime(currentTime)} / {formatTime(duration)}
                   </span>
                 </div>
-                
                 <div className="flex items-center space-x-1">
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleMute(); }}
                     className="control-button text-white hover:text-gray-300 transition-colors"
+                    title={isMuted || volume === 0 ? t('file.viewer.unmute') : t('file.viewer.mute')}
                   >
                     {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                   </button>
@@ -828,30 +796,27 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
-                
                 {/* Кнопка повтора */}
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
                   className={`control-button text-white hover:text-gray-300 transition-colors ${
                     isRepeat ? 'text-purple-500' : ''
                   }`}
-                  title={isRepeat ? 'Disable Repeat' : 'Enable Repeat'}
+                  title={isRepeat ? t('file.viewer.disableRepeat') : t('file.viewer.enableRepeat')}
                 >
                   <Repeat className={`w-4 h-4 ${isRepeat ? 'fill-current' : ''}`} />
                 </button>
-                
                 {/* Кнопка полноэкранного режима в контролах */}
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
                   className="control-button text-white hover:text-gray-300 transition-colors"
-                  title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                  title={isFullscreen ? t('file.viewer.exitFullscreen') : t('file.viewer.fullscreen')}
                 >
                   {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                 </button>
               </div>
             </div>
           )}
-
           {isAudio && (
             <div className="w-full h-full flex flex-col items-center justify-center p-6">
               <div className="bg-gray-800 rounded-full p-6 mb-4">
@@ -866,11 +831,10 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               <audio src={getFileUrl()} controls autoPlay className="w-full max-w-md" />
             </div>
           )}
-
           {!isImage && !isVideo && !isAudio && (
             <div className="text-center text-white p-6">
               <div className="text-4xl mb-3">📄</div>
-              <p className="text-lg mb-3">File type not supported for preview</p>
+              <p className="text-lg mb-3">{t('file.notSupported')}</p>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -879,12 +843,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors text-base flex items-center mx-auto"
               >
                 <Download className="w-4 h-4 mr-1" />
-                Download File
+                {t('file.downloadFile')}
               </button>
             </div>
           )}
         </div>
-
         {/* Footer - скрываем в полноэкранном режиме */}
         {!isFullscreen && (
           <div className="p-3 bg-gray-900/80 backdrop-blur-sm">
@@ -911,7 +874,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   )}
                 </>
               ) : (
-                <div className="text-xs text-gray-400 flex items-center h-full">Нет описания или тегов</div>
+                <div className="text-xs text-gray-400 flex items-center h-full">{t('common.noDescriptionOrTags')}</div>
               )}
             </div>
           </div>

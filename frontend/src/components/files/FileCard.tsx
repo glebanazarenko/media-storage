@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Play, Download, Edit, Trash2, Eye } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { FileItem } from '../../types';
 import { useApp } from '../../contexts/AppContext';
 import { EditFileModal } from './EditFileModal';
@@ -18,6 +19,7 @@ export const FileCard: React.FC<FileCardProps> = ({
   onDelete,
   onView,
 }) => {
+  const { t } = useTranslation();
   const { blurAdultContent } = useApp();
   const [isHovered, setIsHovered] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -101,24 +103,28 @@ export const FileCard: React.FC<FileCardProps> = ({
                 <button
                   onClick={() => onView?.(file)}
                   className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-colors"
+                  title={t('file.view')}
                 >
                   <Eye className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => setShowEditModal(true)}
                   className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-colors"
+                  title={t('file.edit')}
                 >
                   <Edit className="w-5 h-5" />
                 </button>
                 <button
                   onClick={handleDownload}
                   className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-colors"
+                  title={t('file.download')}
                 >
                   <Download className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => onDelete?.(file)}
                   className="bg-red-500/20 hover:bg-red-500/30 text-white p-2 rounded-full transition-colors"
+                  title={t('file.delete')}
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
@@ -131,7 +137,7 @@ export const FileCard: React.FC<FileCardProps> = ({
             <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
               <div className="text-center text-white">
                 <Eye className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm opacity-75">Adult Content</p>
+                <p className="text-sm opacity-75">{t('file.adultContent')}</p>
               </div>
             </div>
           )}

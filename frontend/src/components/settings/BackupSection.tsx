@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Download, Upload, Database, AlertCircle, Shield } from 'lucide-react';
 import { backUpAPI } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 interface BackupSectionProps {
   userId: string;
 }
 
 export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [backupLoading, setBackupLoading] = useState(false);
   const [fullBackupLoading, setFullBackupLoading] = useState(false);
@@ -35,10 +37,10 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
       link.remove();
       window.URL.revokeObjectURL(url);
       
-      setBackupSuccess('Backup downloaded successfully!');
+      setBackupSuccess(t('backup.success'));
     } catch (error: any) {
       console.error('Backup error:', error);
-      setBackupError(error.response?.data?.message || 'Failed to download backup. Please try again.');
+      setBackupError(t('backup.restoreError'));
     } finally {
       setBackupLoading(false);
     }
@@ -62,10 +64,10 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
       link.remove();
       window.URL.revokeObjectURL(url);
       
-      setBackupSuccess('Full backup downloaded successfully!');
+      setBackupSuccess(t('backup.success'));
     } catch (error: any) {
       console.error('Full backup error:', error);
-      setBackupError(error.response?.data?.message || 'Failed to download full backup. Please try again.');
+      setBackupError(t('backup.restoreError'));
     } finally {
       setFullBackupLoading(false);
     }
@@ -85,10 +87,10 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     try {
       const response = await backUpAPI.restoreBackup(formData);
       
-      setRestoreSuccess(response.data.message || `Backup restored successfully! ${response.data.restored_files} files restored.`);
+      setRestoreSuccess(t('backup.restoreSuccessMessage', { restored_files: response.data.restored_files }));
     } catch (error: any) {
       console.error('Restore error:', error);
-      setRestoreError(error.response?.data?.message || 'Failed to restore backup. Please try again.');
+      setRestoreError(t('backup.restoreError'));
     } finally {
       setRestoreLoading(false);
       event.target.value = '';
@@ -99,7 +101,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     <div className="bg-slate-900 rounded-xl p-6">
       <div className="flex items-center space-x-3 mb-6">
         <Database className="w-6 h-6 text-purple-400" />
-        <h2 className="text-xl font-semibold text-white">Data Backup & Restore</h2>
+        <h2 className="text-xl font-semibold text-white">{t('backup.title')}</h2>
       </div>
 
       <div className="space-y-6">
@@ -109,10 +111,10 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
             <div>
               <h3 className="text-white font-medium flex items-center">
                 <Download className="w-4 h-4 mr-2" />
-                Download My Backup
+                {t('backup.download')}
               </h3>
               <p className="text-slate-400 text-sm mt-1">
-                Create a complete backup of all your files and metadata
+                {t('backup.downloadDescription')}
               </p>
             </div>
             <button
@@ -123,12 +125,12 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
               {backupLoading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Creating...</span>
+                  <span>{t('common.loading')}</span>
                 </>
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  <span>Download</span>
+                  <span>{t('backup.downloadButton')}</span>
                 </>
               )}
             </button>
@@ -155,10 +157,10 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
               <div>
                 <h3 className="text-white font-medium flex items-center">
                   <Shield className="w-4 h-4 mr-2 text-yellow-400" />
-                  Download Full Backup (Admin Only)
+                  {t('backup.downloadFull')}
                 </h3>
                 <p className="text-slate-400 text-sm mt-1">
-                  Create a complete backup of ALL users, files and system data
+                  {t('backup.downloadFullDescription')}
                 </p>
               </div>
               <button
@@ -169,22 +171,22 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
                 {fullBackupLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Creating...</span>
+                    <span>{t('common.loading')}</span>
                   </>
                 ) : (
                   <>
                     <Shield className="w-4 h-4" />
-                    <span>Full Backup</span>
+                    <span>{t('backup.fullBackupButton')}</span>
                   </>
                 )}
               </button>
             </div>
 
             <div className="text-slate-400 text-xs mt-2">
-              <p className="text-yellow-400 font-medium">⚠️ Administrator privilege required</p>
-              <p>• Includes ALL users, files, tags, and categories</p>
-              <p>• Very large file size for production systems</p>
-              <p>• Contains sensitive user data</p>
+              <p className="text-yellow-400 font-medium">⚠️ {t('backup.adminRequired')}</p>
+              <p>• {t('backup.downloadFullDescription')}</p>
+              <p>• {t('backup.largeFile')}</p>
+              <p>• {t('backup.sensitiveData')}</p>
             </div>
 
             {backupSuccess && (
@@ -208,15 +210,15 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
             <div>
               <h3 className="text-white font-medium flex items-center">
                 <Upload className="w-4 h-4 mr-2" />
-                Restore from Backup
+                {t('backup.restore')}
               </h3>
               <p className="text-slate-400 text-sm mt-1">
-                Upload and restore your data from a backup file
+                {t('backup.restoreDescription')}
               </p>
             </div>
             <label className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 text-sm cursor-pointer">
               <Upload className="w-4 h-4" />
-              <span>Select File</span>
+              <span>{t('backup.selectFile')}</span>
               <input
                 type="file"
                 accept=".zip"
@@ -228,11 +230,11 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
           </div>
 
           <div className="text-slate-400 text-xs mt-2">
-            <p>• Only .zip backup files are supported</p>
-            <p>• Existing files with same IDs will be skipped</p>
-            <p>• This process may take several minutes for large backups</p>
+            <p>• {t('backup.fileSupport')}</p>
+            <p>• {t('backup.skipDuplicates')}</p>
+            <p>• {t('backup.processTime')}</p>
             {user?.is_admin && (
-              <p className="text-yellow-400">• Admins can restore full system backups</p>
+              <p className="text-yellow-400">• {t('backup.adminRestore')}</p>
             )}
           </div>
 
@@ -252,15 +254,15 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
 
         {/* Backup Info */}
         <div className="bg-slate-800/50 rounded-lg p-4 text-sm">
-          <h4 className="text-white font-medium mb-2">Backup Information</h4>
+          <h4 className="text-white font-medium mb-2">{t('backup.info')}</h4>
           <ul className="text-slate-300 space-y-1">
-            <li>• Backup includes all files, metadata, tags, and categories</li>
-            <li>• Files are stored with their original names and paths</li>
-            <li>• Duplicate files are automatically detected and skipped</li>
-            <li>• Backup files are encrypted for security</li>
-            <li>• Recommended to backup regularly for data safety</li>
+            <li>• {t('backup.info1')}</li>
+            <li>• {t('backup.info2')}</li>
+            <li>• {t('backup.info3')}</li>
+            <li>• {t('backup.info4')}</li>
+            <li>• {t('backup.info5')}</li>
             {user?.is_admin && (
-              <li className="text-yellow-400">• Full backup includes ALL system data</li>
+              <li className="text-yellow-400">• {t('backup.fullInfo')}</li>
             )}
           </ul>
         </div>

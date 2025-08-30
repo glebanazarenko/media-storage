@@ -27,7 +27,7 @@ export const RegisterForm: React.FC = () => {
     setError('');
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setError(t('auth.passwordMismatch'));
       setLoading(false);
       return;
     }
@@ -37,7 +37,7 @@ export const RegisterForm: React.FC = () => {
       await register(registerData);
       navigate('/dashboard');
     } catch (err) {
-      setError('Registration failed');
+      setError(t('auth.registrationFailed'));
     } finally {
       setLoading(false);
     }
@@ -58,7 +58,7 @@ export const RegisterForm: React.FC = () => {
             <UserPlus className="w-8 h-8 text-white" />
           </div>
           <h2 className="text-3xl font-bold text-white mb-2">{t('auth.register')}</h2>
-          <p className="text-slate-300">Join MediaVault today</p>
+          <p className="text-slate-300">{t('auth.join')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

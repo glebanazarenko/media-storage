@@ -186,7 +186,7 @@ export const Dashboard: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Error loading files:', error);
-      setError(error.response?.data?.message || 'Failed to load files');
+      setError(error.response?.data?.message || t('file.failedToUpdate'));
       setFiles([]);
     } finally {
       setLoading(false);
@@ -240,7 +240,7 @@ export const Dashboard: React.FC = () => {
         await filesAPI.deleteFile(file.id);
         await loadFiles(stats.currentPage);
       } catch (error: any) {
-        alert(error.response?.data?.message || 'Failed to delete file');
+        alert(error.response?.data?.message || t('file.failedToUpdate'));
       }
     }
   };
@@ -291,11 +291,11 @@ export const Dashboard: React.FC = () => {
           disabled={stats.currentPage <= 1 || loading}
           className="px-3 py-1 bg-slate-800 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors text-sm"
         >
-          Previous
+          {t('file.previous')}
         </button>
 
         <div className="flex items-center space-x-1">
-          <span className="text-slate-400 text-sm">Page</span>
+          <span className="text-slate-400 text-sm">{t('file.page')}</span>
           <input
             type="number"
             min="1"
@@ -313,7 +313,7 @@ export const Dashboard: React.FC = () => {
             }}
             className="w-10 px-2 py-1 bg-slate-800 border border-slate-700 text-white rounded text-sm focus:outline-none focus:border-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
-          <span className="text-slate-400 text-sm">of {stats.pages}</span>
+          <span className="text-slate-400 text-sm">{t('file.of')} {stats.pages}</span>
         </div>
 
         <button
@@ -321,10 +321,21 @@ export const Dashboard: React.FC = () => {
           disabled={stats.currentPage >= stats.pages || loading}
           className="px-3 py-1 bg-slate-800 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors text-sm"
         >
-          Next
+          {t('file.next')}
         </button>
       </div>
     );
+  };
+
+  const getFileCountText = () => {
+    return t('file.filesTotal', { count: stats.total });
+  };
+
+  const getCategoryTitle = () => {
+    if (searchFilters.category === 'all') {
+      return t('file.allFiles');
+    }
+    return `${searchFilters.category} ${t('file.files')}`;
   };
 
   return (
@@ -335,7 +346,7 @@ export const Dashboard: React.FC = () => {
             {t('nav.dashboard')}
           </h1>
           <p className="text-slate-400">
-            Manage your media files and collections
+            {t('file.manageMedia')}
           </p>
         </div>
 
@@ -354,11 +365,11 @@ export const Dashboard: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center space-x-4">
             <h2 className="text-xl font-semibold text-white">
-              {searchFilters.category === 'all' ? 'All Files' : `${searchFilters.category} Files`}
+              {getCategoryTitle()}
             </h2>
             {stats.total > 0 && (
               <span className="text-slate-400 whitespace-nowrap">
-                {stats.total} files total
+                {getFileCountText()}
               </span>
             )}
           </div>
@@ -374,16 +385,16 @@ export const Dashboard: React.FC = () => {
                 onChange={(e) => handleSortChange(e.target.value, searchFilters.sortOrder)}
                 className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-purple-500"
               >
-                <option value="date">Sort by Date</option>
-                <option value="name">Sort by Name</option>
-                <option value="size">Sort by Size</option>
+                <option value="date">{t('file.sortByDate')}</option>
+                <option value="name">{t('file.sortByName')}</option>
+                <option value="size">{t('file.sortBySize')}</option>
               </select>
               
               <button
                 onClick={() => handleSortChange(searchFilters.sortBy, searchFilters.sortOrder === 'asc' ? 'desc' : 'asc')}
                 className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700 transition-colors whitespace-nowrap"
               >
-                {searchFilters.sortOrder === 'asc' ? '↑ ASC' : '↓ DESC'}
+                {searchFilters.sortOrder === 'asc' ? `↑ ${t('file.ascending')}` : `↓ ${t('file.descending')}`}
               </button>
             </div>
           </div>

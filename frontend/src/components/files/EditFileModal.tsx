@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { FileItem } from '../../types';
 import { filesAPI } from '../../services/api';
 import { TagInput } from './TagInput';
@@ -15,6 +16,7 @@ export const EditFileModal: React.FC<EditFileModalProps> = ({
   onClose,
   onSave,
 }) => {
+  const { t } = useTranslation();
   const [description, setDescription] = useState(file.description || '');
   const [category, setCategory] = useState(file.category_name || '0+');
   const [tags, setTags] = useState<string[]>(file.tags.map(tag => tag.name));
@@ -46,7 +48,7 @@ export const EditFileModal: React.FC<EditFileModalProps> = ({
 
       onSave(updatedFile);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to update file');
+      setError(err.response?.data?.message || t('file.failedToUpdate'));
     } finally {
       setLoading(false);
     }
@@ -57,7 +59,7 @@ export const EditFileModal: React.FC<EditFileModalProps> = ({
       <div className="bg-slate-900 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-white">Edit File</h2>
+            <h2 className="text-2xl font-bold text-white">{t('file.editFile')}</h2>
             <button
               onClick={onClose}
               className="text-slate-400 hover:text-white transition-colors"
@@ -105,42 +107,42 @@ export const EditFileModal: React.FC<EditFileModalProps> = ({
               {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-2">
-                  Description
+                  {t('file.description')}
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500"
                   rows={3}
-                  placeholder="Enter file description..."
+                  placeholder={t('file.enterDescription')}
                 />
               </div>
 
               {/* Category */}
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-2">
-                  Category
+                  {t('file.category')}
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500"
                 >
-                  <option value="0+">0+ (General)</option>
-                  <option value="16+">16+ (Teen)</option>
-                  <option value="18+">18+ (Adult)</option>
+                  <option value="0+">{t('file.general')} (0+)</option>
+                  <option value="16+">{t('file.teen')} (16+)</option>
+                  <option value="18+">{t('file.adult')} (18+)</option>
                 </select>
               </div>
 
               {/* Tags */}
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-2">
-                  Tags
+                  {t('file.tags')}
                 </label>
                 <TagInput
                   tags={tags}
                   onTagsChange={setTags}
-                  placeholder="Add tags..."
+                  placeholder={t('file.addTags')}
                   allowNegative={false}
                 />
               </div>
@@ -153,14 +155,14 @@ export const EditFileModal: React.FC<EditFileModalProps> = ({
                 className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors"
                 disabled={loading}
               >
-                Cancel
+                {t('file.cancel')}
               </button>
               <button
                 type="submit"
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
                 disabled={loading}
               >
-                {loading ? 'Saving...' : 'Save Changes'}
+                {loading ? t('common.loading') : t('file.saveChanges')}
               </button>
             </div>
           </form>

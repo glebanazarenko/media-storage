@@ -41,7 +41,7 @@ export const LoginForm: React.FC = () => {
       await login(formData);
       // Редирект будет обработан в login функции
     } catch (err) {
-      setError('Invalid credentials');
+      setError(t('auth.invalidCredentials'));
     } finally {
       setLoading(false);
     }
@@ -67,7 +67,7 @@ export const LoginForm: React.FC = () => {
             <LogIn className="w-8 h-8 text-white" />
           </div>
           <h2 className="text-3xl font-bold text-white mb-2">{t('auth.login')}</h2>
-          <p className="text-slate-300">Welcome back to MediaVault</p>
+          <p className="text-slate-300">{t('auth.welcomeBack')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

@@ -36,6 +36,10 @@ export const Sidebar: React.FC = () => {
     i18n.changeLanguage(newLang);
   };
 
+  const toggleBlurAdultContent = () => {
+    setBlurAdultContent(!blurAdultContent);
+  };
+
   const isActive = (path: string) => location.pathname === path;
 
   if (!sidebarOpen) {
@@ -103,16 +107,20 @@ export const Sidebar: React.FC = () => {
             className="flex items-center space-x-3 px-4 py-3 w-full text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-all duration-200"
           >
             <Languages className="w-5 h-5" />
-            <span>{language === 'en' ? 'Русский' : 'English'}</span>
+            <span>{t('settings.language')}</span>
           </button>
 
           {/* Blur Adult Content Toggle */}
           <button
-            onClick={() => setBlurAdultContent(!blurAdultContent)}
+            onClick={toggleBlurAdultContent}
             className="flex items-center space-x-3 px-4 py-3 w-full text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-all duration-200"
           >
             {blurAdultContent ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            <span>{blurAdultContent ? 'Show Adult' : 'Hide Adult'}</span>
+            <span>
+              {blurAdultContent 
+                ? t('settings.showAdult') 
+                : t('settings.hideAdult')}
+            </span>
           </button>
 
           {/* Logout */}

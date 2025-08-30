@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Users, Lock, Globe } from 'lucide-react';
+import { Plus, Users, Lock, Globe, Folder } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 
 export const Collections: React.FC = () => {
@@ -42,6 +42,13 @@ export const Collections: React.FC = () => {
     return new Date(dateString).toLocaleDateString();
   };
 
+  const getMemberText = (count: number): string => {
+    if (count === 1) {
+      return `1 ${t('file.member')}`;
+    }
+    return `${count} ${t('file.members')}`;
+  };
+
   return (
     <Layout>
       <div className="p-6">
@@ -51,12 +58,12 @@ export const Collections: React.FC = () => {
               {t('nav.collections')}
             </h1>
             <p className="text-slate-400">
-              Organize and share your media collections
+              {t('file.manageMedia')}
             </p>
           </div>
           <button className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300">
             <Plus className="w-5 h-5" />
-            <span>New Collection</span>
+            <span>{t('file.newCollection')}</span>
           </button>
         </div>
 
@@ -77,17 +84,17 @@ export const Collections: React.FC = () => {
                   {collection.isPrivate ? (
                     <div className="bg-red-500/20 backdrop-blur-sm border border-red-500/50 text-red-300 px-2 py-1 rounded-full text-xs flex items-center space-x-1">
                       <Lock className="w-3 h-3" />
-                      <span>Private</span>
+                      <span>{t('file.private')}</span>
                     </div>
                   ) : (
                     <div className="bg-green-500/20 backdrop-blur-sm border border-green-500/50 text-green-300 px-2 py-1 rounded-full text-xs flex items-center space-x-1">
                       <Globe className="w-3 h-3" />
-                      <span>Public</span>
+                      <span>{t('file.public')}</span>
                     </div>
                   )}
                 </div>
                 <div className="absolute bottom-3 left-3 bg-black/50 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm">
-                  {collection.fileCount} files
+                  {collection.fileCount} {t('file.files')}
                 </div>
               </div>
 
@@ -106,9 +113,9 @@ export const Collections: React.FC = () => {
                 <div className="flex items-center justify-between text-sm text-slate-500">
                   <div className="flex items-center space-x-1">
                     <Users className="w-4 h-4" />
-                    <span>{collection.memberCount} member{collection.memberCount !== 1 ? 's' : ''}</span>
+                    <span>{getMemberText(collection.memberCount)}</span>
                   </div>
-                  <span>Updated {formatDate(collection.lastUpdated)}</span>
+                  <span>{t('file.updated')} {formatDate(collection.lastUpdated)}</span>
                 </div>
               </div>
             </div>
@@ -121,11 +128,11 @@ export const Collections: React.FC = () => {
             <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
               <Folder className="w-8 h-8 text-slate-400" />
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">No collections yet</h3>
-            <p className="text-slate-400 mb-6">Create your first collection to organize your files.</p>
+            <h3 className="text-xl font-semibold text-white mb-2">{t('file.noCollections')}</h3>
+            <p className="text-slate-400 mb-6">{t('file.createFirstCollection')}</p>
             <button className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300">
               <Plus className="w-5 h-5" />
-              <span>Create Collection</span>
+              <span>{t('file.createCollection')}</span>
             </button>
           </div>
         )}

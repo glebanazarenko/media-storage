@@ -76,78 +76,102 @@ def stream_file(
     try:
         # Вызываем сервис стриминга
         stream_data = stream_file_service(file_id, range_header, current_user.id)
-
         s3_response = stream_data["s3_response"]
-        file = stream_data["file"]
+        # file = stream_data["file"] # Не используется напрямую здесь
         start = stream_data["start"]
         end = stream_data["end"]
         status_code = stream_data["status_code"]
         headers = stream_data["headers"]
-        file_size = stream_data["file_size"]
+        # file_size = stream_data["file_size"] # Не используется напрямую здесь
+        # mime_type = stream_data["mime_type"] # Не используется напрямую здесь
+
+        # --- ИСПРАВЛЕНИЕ НАЧАЛО ---
+        # Вычисляем content_length заранее, вне блока try генератора
+        calculated_content_length = end - start + 1
 
         # Создаем генератор для стриминга
         def iter_file():
+            # Инициализируем bytes_read на уровне функции, вне try
+            bytes_read = 0
+            # Используем calculated_content_length из внешней области видимости
+            content_length = calculated_content_length
+            chunk_size = 64 * 1024 # 64KB chunks
+            
             try:
-                # Читаем по частям
-                chunk_size = 8192
-                content_length = end - start + 1
-                bytes_read = 0
-
+                # Читаем из S3 по частям и сразу отдаем клиенту
                 while bytes_read < content_length:
+                    # Вычисляем, сколько байт читать в этой итерации
                     read_size = min(chunk_size, content_length - bytes_read)
+                    # Читаем чанк из тела ответа S3
                     chunk = s3_response["Body"].read(read_size)
+                    # Если чанк пустой, значит, данные закончились
                     if not chunk:
+                        # Это может быть неожиданно, если bytes_read < content_length
+                        # Но мы все равно выходим из цикла
                         break
+                    # Увеличиваем счетчик прочитанных байт
+                    # Теперь bytes_read точно определен
                     bytes_read += len(chunk)
+                    # Отдаем чанк клиенту
                     yield chunk
             except Exception as e:
-                raise
+                print(f"Error during streaming chunk: {e}")
+                # Можно логировать ошибку, но повторно выбрасывать её внутри генератора
+                # может быть сложно обработать корректно в контексте StreamingResponse.
+                # Лучше позволить генератору завершиться.
+                # Однако, если клиент отключился, это нормально.
+                # FastAPI/Uvicorn должны обработать это.
+                # Просто завершаем генератор.
+                # yield b"" # Не обязательно
+                return # Завершаем генератор
             finally:
+                # Всегда закрываем поток из S3
                 try:
                     s3_response["Body"].close()
-                except:
+                except Exception as e:
+                    print(f"Error closing S3 stream: {e}")
+                    # Игнорируем ошибки закрытия
                     pass
-
-        # Определяем MIME-type
+        
+        # Получаем mime_type после обработки ошибок сервиса, но до создания генератора
+        # на случай, если сервис бросит исключение.
         mime_type = (
-            file.mime_type
+            stream_data["file"].mime_type # Получаем из файла, полученного сервисом
             or s3_response.get("ContentType")
             or "application/octet-stream"
         )
+        # --- ИСПРАВЛЕНИЕ КОНЕЦ ---
 
         # Правильно кодируем имя файла для заголовка
-        safe_filename = quote(file.original_name.encode("utf-8"))
+        safe_filename = quote(stream_data["file"].original_name.encode("utf-8"))
         content_disposition = f"inline; filename*=UTF-8''{safe_filename}"
 
-        # Добавляем заголовки
+        # Добавляем заголовки (перезаписываем или добавляем)
+        # Убедимся, что Content-Length соответствует запрошенному диапазону
         headers.update(
             {
                 "Content-Disposition": content_disposition,
-                "Content-Length": str(end - start + 1),
+                "Content-Length": str(calculated_content_length), # Используем заранее вычисленное значение
                 "Accept-Ranges": "bytes",
                 "Cache-Control": "public, max-age=3600",
             }
         )
 
         return StreamingResponse(
-            iter_file(),
+            iter_file(), # Передаем генератор
             status_code=status_code,
             media_type=mime_type,
             headers=headers,
         )
-
     except ClientError as e:
-        print(e)
-        error_msg = f"S3 Client Error for file {file_id}: {str(e)}"
-        raise HTTPException(status_code=500, detail=error_msg)
-    except HTTPException as e:
-        print(e)
+        print(f"S3 Client Error for file {file_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"S3 Client Error: {str(e)}")
+    except HTTPException:
         # Пробрасываем HTTP исключения без изменений
         raise
     except Exception as e:
-        print(e)
-        error_msg = f"Unexpected error streaming file {file_id}: {str(e)}"
-        raise HTTPException(status_code=500, detail=error_msg)
+        print(f"Unexpected error streaming file {file_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
 @router.get("/thumbnail/{key}")

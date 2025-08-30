@@ -1,6 +1,7 @@
 import re
 import uuid
 from typing import List
+from urllib.parse import quote
 
 from botocore.exceptions import ClientError
 from fastapi import HTTPException, UploadFile
@@ -213,6 +214,7 @@ def stream_file_service(file_id: str, range_header: str, user_id: str) -> dict:
             )
             file_size = file_head.get("ContentLength", file.size)
         except:
+            # Если не удалось получить размер из S3, используем сохраненный
             file_size = file.size
 
         # Обработка Range запросов
@@ -244,30 +246,49 @@ def stream_file_service(file_id: str, range_header: str, user_id: str) -> dict:
 
         if s3_range:
             s3_params["Range"] = s3_range
-
         s3_response = s3_client.get_object(**s3_params)
+        
+        # Определяем MIME-type
+        mime_type = (
+            file.mime_type
+            or s3_response.get("ContentType")
+            or "application/octet-stream"
+        )
+        
+        # Правильно кодируем имя файла для заголовка
+        safe_filename = quote(file.original_name.encode("utf-8"))
+        content_disposition = f"inline; filename*=UTF-8''{safe_filename}"
+
+        # Добавляем заголовки
+        headers.update(
+            {
+                "Content-Disposition": content_disposition,
+                "Content-Length": str(end - start + 1),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            }
+        )
 
         return {
-            "s3_response": s3_response,
+            "s3_response": s3_response, # Это объект ответа от S3 с Body
             "file": file,
             "start": start,
             "end": end,
             "status_code": status_code,
             "headers": headers,
             "file_size": file_size,
+            "mime_type": mime_type, # Добавляем mime_type в возвращаемый словарь
         }
 
     except ClientError as e:
-        print(e)
-        error_msg = f"S3 Client Error for file {file_id}: {str(e)}"
-        raise HTTPException(status_code=500, detail=error_msg)
-    except HTTPException as e:
+        print(f"S3 Client Error for file {file_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"S3 Client Error: {str(e)}")
+    except HTTPException:
         # Пробрасываем HTTP исключения без изменений
         raise
     except Exception as e:
-        print(e)
-        error_msg = f"Unexpected error streaming file {file_id}: {str(e)}"
-        raise HTTPException(status_code=500, detail=error_msg)
+        print(f"Unexpected error streaming file {file_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
 def download_file_service(file_id: str, user_id: str) -> dict:

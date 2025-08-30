@@ -24,6 +24,7 @@ docker-compose exec db psql -U postgres -d media_storage -c "\dt"
 docker-compose exec db psql -U postgres -d media_storage -c "Select count(*) from users"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from users"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from files"
+docker-compose exec db psql -U postgres -d media_storage -c "UPDATE users SET is_admin = TRUE WHERE username = 'admin';"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from files WHERE created_at::date = CURRENT_DATE;"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from tags"
 docker-compose exec db psql -U postgres -d media_storage -c "Select * from categories"
@@ -55,12 +56,6 @@ docker-compose exec backend pylint src/
 Docker Secrets (Swarm) для прода
 
 CI/CD 
-
-При двойном клике откоывать и закрывать видео
-
-После разлогина хранить url тоже и после логина его применять
-
-Если админ, то можешь делать полный бекап и полное востановление
 
 Надо показывать язык мне кажется текущий, добавить переводы
 

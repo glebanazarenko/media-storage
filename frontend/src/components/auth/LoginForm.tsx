@@ -8,7 +8,7 @@ import { LoginCredentials } from '../../types';
 export const LoginForm: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuth(); // Добавляем isAuthenticated
+  const { login, isAuthenticated } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -16,7 +16,14 @@ export const LoginForm: React.FC = () => {
   // Если пользователь уже аутентифицирован, перенаправляем
   React.useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard');
+      // Проверяем сохраненный URL
+      const savedUrl = sessionStorage.getItem('redirectAfterLogin');
+      if (savedUrl) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        window.location.replace(savedUrl);
+      } else {
+        navigate('/dashboard');
+      }
     }
   }, [isAuthenticated, navigate]);
 
@@ -32,7 +39,7 @@ export const LoginForm: React.FC = () => {
 
     try {
       await login(formData);
-      // Не нужно явно вызывать navigate - ProtectedRoute сам перенаправит
+      // Редирект будет обработан в login функции
     } catch (err) {
       setError('Invalid credentials');
     } finally {

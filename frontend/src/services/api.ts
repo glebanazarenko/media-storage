@@ -27,8 +27,17 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Сохраняем текущий URL только если мы не на публичных страницах
+      const currentPath = window.location.pathname;
+      const currentSearch = window.location.search;
+      const currentUrl = currentPath + currentSearch;
+      
+      if (!['/login', '/register'].includes(currentPath)) {
+        sessionStorage.setItem('redirectAfterLogin', currentUrl);
+      }
+      
       // Только если мы не на странице логина
-      if (window.location.pathname !== '/login') {
+      if (currentPath !== '/login') {
         // Используем history API вместо прямого изменения location
         window.history.pushState(null, '', '/login');
         // Перезагружаем страницу только один раз
@@ -185,6 +194,12 @@ export const usersAPI = {
 export const backUpAPI = {
   downloadBackup: () => {
     return api.get('/backup/download', {
+      responseType: 'blob'
+    });
+  },
+
+  downloadFullBackup: () => {
+    return api.get('/backup/download-full', {
       responseType: 'blob'
     });
   },

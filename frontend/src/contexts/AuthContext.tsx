@@ -69,6 +69,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await authAPI.login(credentials);
       if (response.status === 200) {
         await checkAuthStatus();
+        // После успешного логина проверяем сохраненный URL
+        const savedUrl = sessionStorage.getItem('redirectAfterLogin');
+        if (savedUrl) {
+          sessionStorage.removeItem('redirectAfterLogin');
+          // Используем replace чтобы не создавать новую запись в истории
+          window.location.replace(savedUrl);
+        }
       } else {
         throw new Error('Login failed');
       }
@@ -92,6 +99,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async () => {
     try {
+      // Сохраняем текущий URL перед логаутом (но не для страниц логина/регистрации)
+      const currentPath = window.location.pathname;
+      const currentSearch = window.location.search;
+      const currentUrl = currentPath + currentSearch;
+      
+      if (!['/login', '/register'].includes(currentPath)) {
+        sessionStorage.setItem('redirectAfterLogin', currentUrl);
+      }
+      
       await authAPI.logout();
     } catch (error) {
       console.error('Logout error:', error);

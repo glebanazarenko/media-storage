@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { Download, Upload, Database, AlertCircle } from 'lucide-react';
+import { Download, Upload, Database, AlertCircle, Shield } from 'lucide-react';
 import { backUpAPI } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface BackupSectionProps {
   userId: string;
 }
 
 export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
+  const { user } = useAuth();
   const [backupLoading, setBackupLoading] = useState(false);
+  const [fullBackupLoading, setFullBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [backupSuccess, setBackupSuccess] = useState('');
   const [restoreSuccess, setRestoreSuccess] = useState('');
@@ -20,10 +23,8 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     setBackupSuccess('');
 
     try {
-      // Используем backUpAPI для загрузки бэкапа
       const response = await backUpAPI.downloadBackup();
       
-      // Создаем ссылку для скачивания файла
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -43,6 +44,33 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     }
   };
 
+  const handleDownloadFullBackup = async () => {
+    setFullBackupLoading(true);
+    setBackupError('');
+    setBackupSuccess('');
+
+    try {
+      const response = await backUpAPI.downloadFullBackup();
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const timestamp = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `full_backup_all_users_${timestamp}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      setBackupSuccess('Full backup downloaded successfully!');
+    } catch (error: any) {
+      console.error('Full backup error:', error);
+      setBackupError(error.response?.data?.message || 'Failed to download full backup. Please try again.');
+    } finally {
+      setFullBackupLoading(false);
+    }
+  };
+
   const handleUploadBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -55,7 +83,6 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     formData.append('backup_file', file);
 
     try {
-      // Используем backUpAPI для восстановления бэкапа
       const response = await backUpAPI.restoreBackup(formData);
       
       setRestoreSuccess(response.data.message || `Backup restored successfully! ${response.data.restored_files} files restored.`);
@@ -64,7 +91,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
       setRestoreError(error.response?.data?.message || 'Failed to restore backup. Please try again.');
     } finally {
       setRestoreLoading(false);
-      event.target.value = ''; // Сбросить input
+      event.target.value = '';
     }
   };
 
@@ -76,13 +103,13 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
       </div>
 
       <div className="space-y-6">
-        {/* Download Backup */}
+        {/* Download User Backup */}
         <div className="border border-slate-700 rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
               <h3 className="text-white font-medium flex items-center">
                 <Download className="w-4 h-4 mr-2" />
-                Download Backup
+                Download My Backup
               </h3>
               <p className="text-slate-400 text-sm mt-1">
                 Create a complete backup of all your files and metadata
@@ -121,6 +148,60 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
           )}
         </div>
 
+        {/* Download Full Backup (Admin Only) */}
+        {user?.is_admin && (
+          <div className="border border-slate-700 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-white font-medium flex items-center">
+                  <Shield className="w-4 h-4 mr-2 text-yellow-400" />
+                  Download Full Backup (Admin Only)
+                </h3>
+                <p className="text-slate-400 text-sm mt-1">
+                  Create a complete backup of ALL users, files and system data
+                </p>
+              </div>
+              <button
+                onClick={handleDownloadFullBackup}
+                disabled={fullBackupLoading}
+                className="flex items-center space-x-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-50 text-sm"
+              >
+                {fullBackupLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4" />
+                    <span>Full Backup</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="text-slate-400 text-xs mt-2">
+              <p className="text-yellow-400 font-medium">⚠️ Administrator privilege required</p>
+              <p>• Includes ALL users, files, tags, and categories</p>
+              <p>• Very large file size for production systems</p>
+              <p>• Contains sensitive user data</p>
+            </div>
+
+            {backupSuccess && (
+              <div className="bg-green-500/20 border border-green-500/50 text-green-200 px-3 py-2 rounded text-sm mt-2">
+                {backupSuccess}
+              </div>
+            )}
+
+            {backupError && (
+              <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-3 py-2 rounded text-sm mt-2 flex items-center">
+                <AlertCircle className="w-4 h-4 mr-2" />
+                {backupError}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Upload Backup */}
         <div className="border border-slate-700 rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
@@ -150,6 +231,9 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
             <p>• Only .zip backup files are supported</p>
             <p>• Existing files with same IDs will be skipped</p>
             <p>• This process may take several minutes for large backups</p>
+            {user?.is_admin && (
+              <p className="text-yellow-400">• Admins can restore full system backups</p>
+            )}
           </div>
 
           {restoreSuccess && (
@@ -175,6 +259,9 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
             <li>• Duplicate files are automatically detected and skipped</li>
             <li>• Backup files are encrypted for security</li>
             <li>• Recommended to backup regularly for data safety</li>
+            {user?.is_admin && (
+              <li className="text-yellow-400">• Full backup includes ALL system data</li>
+            )}
           </ul>
         </div>
       </div>

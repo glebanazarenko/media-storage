@@ -32,6 +32,8 @@ export interface FileItem {
   updated_at: string;
   thumbnail_url?: string;
   owner_id: string;
+  transcoding_status?: 'pending' | 'processing' | 'completed' | 'failed'; // Добавляем
+  hls_manifest_path?: string; // Добавляем
   views_count?: number;
   downloads_count?: number;
 }

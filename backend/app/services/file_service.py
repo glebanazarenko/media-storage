@@ -83,6 +83,10 @@ def save_file_metadata(
 
     file_record = create_file(file_create)
     file_record = FileMetadataService.enrich_file_metadata(file_record)
+    from app.services.transcode_service import start_transcoding
+
+    if file_record.mime_type and file_record.mime_type.startswith("video/"):
+        start_transcoding(str(file_record.id))
     return FileResponse.model_validate(file_record)
 
 

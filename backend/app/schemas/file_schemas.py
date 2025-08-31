@@ -25,6 +25,9 @@ class FileResponse(FileCreate):
     updated_at: datetime
     tags_name: List[str] = []
     category_name: str
+    transcoding_status: Optional[str] = "pending" # Убедитесь, что тип совпадает с моделью SQLAlchemy
+    hls_manifest_path: Optional[str] = None
+    dash_manifest_path: Optional[str] = None
 
     class Config:
         from_attributes = True

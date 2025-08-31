@@ -1,4 +1,5 @@
 from typing import Optional
+import mimetypes
 from urllib.parse import quote
 
 from botocore.exceptions import ClientError
@@ -32,6 +33,7 @@ from app.services.file_service import (
     update_file_metadata,
     download_file_from_url_service,
 )
+from app.repositories.file_repository import get_file_by_id
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -172,6 +174,85 @@ def stream_file(
     except Exception as e:
         print(f"Unexpected error streaming file {file_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+
+@router.get("/{file_id}/manifest/{manifest_type}/{manifest_name:path}")
+def get_manifest(
+    file_id: str,
+    manifest_type: str, # "hls" или "dash"
+    manifest_name: str, # путь к манифесту, например "master.m3u8" или "stream_720p/playlist.m3u8"
+    current_user: User = Depends(get_current_user),
+):
+    """Отдает манифест (HLS или DASH) из S3."""
+    print('test')
+    try:
+        file = get_file_by_id(file_id)
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        # Проверяем права доступа
+        if file.owner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Определяем путь к манифесту в S3
+        s3_manifest_key = None
+        if manifest_type == "hls" and file.hls_manifest_path:
+            # Извлекаем базовый путь из hls_manifest_path
+            base_hls_path = "/".join(file.hls_manifest_path.split("/")[:-1]) # Убираем имя файла
+            s3_manifest_key = f"{base_hls_path}/{manifest_name}"
+        # elif manifest_type == "dash" and file.dash_manifest_path:
+        #     # Аналогично для DASH
+        #     base_dash_path = "/".join(file.dash_manifest_path.split("/")[:-1])
+        #     s3_manifest_key = f"{base_dash_path}/{manifest_name}"
+        else:
+            raise HTTPException(status_code=404, detail="Manifest not found or transcoding not completed")
+
+        # Запрашиваем манифест из S3
+        try:
+            s3_response = s3_client.get_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_manifest_key)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                raise HTTPException(status_code=404, detail="Manifest not found in storage")
+            else:
+                raise HTTPException(status_code=500, detail=f"S3 error: {str(e)}")
+
+        # Определяем Content-Type
+        content_type, _ = mimetypes.guess_type(manifest_name)
+        if not content_type:
+            if manifest_name.endswith('.m3u8'):
+                content_type = 'application/vnd.apple.mpegurl' # Или 'audio/mpegurl'
+            elif manifest_name.endswith('.mpd'):
+                 content_type = 'application/dash+xml'
+            else:
+                content_type = 'application/octet-stream'
+
+        # Создаем генератор для стриминга
+        def iter_file():
+            try:
+                for chunk in s3_response['Body'].iter_chunks(chunk_size=64 * 1024): # 64KB
+                    yield chunk
+            except Exception as e:
+                print(f"Error streaming manifest chunk: {e}")
+                return
+            finally:
+                try:
+                    s3_response['Body'].close()
+                except:
+                    pass
+
+        return StreamingResponse(
+            iter_file(),
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=300", # Манифесты могут меняться, кэшируем коротко
+                 "Accept-Ranges": "bytes", # Полезно для Range-запросов к сегментам, если нужно
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+         print(f"Unexpected error getting manifest {manifest_name} for file {file_id}: {e}")
+         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/thumbnail/{key}")

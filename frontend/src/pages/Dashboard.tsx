@@ -142,6 +142,9 @@ export const Dashboard: React.FC = () => {
         thumbnail_url: thumbnailUrl,
         preview_url: previewUrl,
         owner_id: file.owner_id,
+        transcoding_status: file.transcoding_status ?? null,
+        hls_manifest_path: file.hls_manifest_path ?? null,
+        dash_manifest_path: file.dash_manifest_path ?? null,
       };
     };
     

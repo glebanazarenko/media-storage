@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { X, Download, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCw, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Repeat } from 'lucide-react';
 import { FileItem } from '../../types';
 import { filesAPI, API_BASE_URL } from '../../services/api';
+// --- ИМПОРТ HLS.JS ---
+import Hls from 'hls.js';
 
 interface FileViewerModalProps {
   file: FileItem;
@@ -60,11 +62,32 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [lastClickTime, setLastClickTime] = useState(0);
   const [lastClickPosition, setLastClickPosition] = useState({ x: 0, y: 0 });
 
+  // --- HLS STATE ---
+  const hlsRef = useRef<Hls | null>(null); // Реф для экземпляра Hls
+
   const isImage = file.mime_type.startsWith('image/');
   const isVideo = file.mime_type.startsWith('video/');
   const isAudio = file.mime_type.startsWith('audio/');
 
-  const getFileUrl = () => `${API_BASE_URL}/files/${file.id}/stream`;
+  // --- ИЗМЕНЕНИЕ: функция для получения URL ---
+  const getFileUrl = () => {
+    // Проверяем, доступен ли HLS и завершена ли транскодировка
+    if (isVideo && file.transcoding_status === 'completed' && file.hls_manifest_path) {
+        // Возвращаем URL к эндпоинту манифеста
+        // Предполагаем, что бэкенд предоставляет эндпоинт /files/{id}/manifest/hls/{path}
+        // и file.hls_manifest_path содержит путь относительно этого эндпоинта
+        // Например, если file.hls_manifest_path = "transcoded/uuid/hls/master.m3u8"
+        // URL будет: /files/{file.id}/manifest/hls/master.m3u8
+        // (или можно формировать URL напрямую к S3, если сегменты публичны)
+        return `${API_BASE_URL}/files/${file.id}/manifest/hls/master.m3u8`;
+    } else if (isVideo) {
+        // Если транскодирование не завершено или не удалось, используем старый стриминг
+        return `${API_BASE_URL}/files/${file.id}/stream`;
+    } else {
+        // Для изображений и аудио оставляем старый URL
+        return `${API_BASE_URL}/files/${file.id}/stream`;
+    }
+  };
 
   // Функция для обрезки текста
   const truncateText = (text: string, maxLength: number) => {
@@ -92,18 +115,108 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         setVideoNatural({ width: v.videoWidth, height: v.videoHeight });
         setMediaNatural({ width: v.videoWidth, height: v.videoHeight });
       };
-      v.src = getFileUrl();
+      v.src = getFileUrl(); // Используем getFileUrl для получения правильного источника
     } else if (isAudio) {
       setMediaNatural({ width: 600, height: 300 });
     } else {
       setMediaNatural({ width: 800, height: 600 });
     }
-  }, [file.id, file.mime_type]);
+  }, [file.id, file.mime_type, file.transcoding_status, file.hls_manifest_path]);
 
   // Сброс вида при смене файла
   useEffect(() => {
     resetView();
   }, [file.id]);
+
+  // --- ИЗМЕНЕНИЕ: Эффект для инициализации HLS ---
+  useEffect(() => {
+    const video = videoRef.current;
+    const fileUrl = getFileUrl(); // Получаем правильный URL
+
+    if (isVideo && video) {
+      // Проверяем, поддерживает ли браузер нативно HLS (Safari)
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Нативная поддержка HLS
+        console.log("Using native HLS support");
+        video.src = fileUrl;
+      } else if (Hls.isSupported()) {
+        // Поддержка через Hls.js
+        console.log("Using Hls.js");
+        const hls = new Hls({
+            // Дополнительные опции Hls.js
+            // enableWorker: true,
+            // lowLatencyMode: true,
+            // backBufferLength: 90 // Секунды буфера назад
+            // --- НАСТРОЙКА ДЛЯ ОТПРАВКИ CREDENTIALS ---
+            xhrSetup: function(xhr: XMLHttpRequest) {
+              // Указываем, что нужно отправлять cookies с каждым XHR запросом
+              // Это аналогично withCredentials: true в fetch
+              xhr.withCredentials = true;
+            }
+            // --- КОНЕЦ НАСТРОЙКИ CREDENTIALS ---
+        });
+        hlsRef.current = hls; // Сохраняем ссылку на экземпляр
+
+        hls.loadSource(fileUrl); // Загружаем манифест
+        hls.attachMedia(video);  // Привязываем к элементу video
+
+        // Обработка событий Hls.js (опционально, для отладки)
+        hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+            console.log("HLS Manifest parsed", data);
+            // Можно автоматически начать воспроизведение
+            // video.play().catch(e => console.error("Autoplay failed:", e));
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+            console.error("HLS Error:", event, data);
+            if (data.fatal) {
+                switch(data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        // Попробуйте перезагрузить манифест
+                        console.log("Fatal network error encountered, try to recover");
+                        hls.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.log("Fatal media error encountered, try to recover");
+                        hls.recoverMediaError();
+                        break;
+                    default:
+                        // Невосстановимая ошибка
+                        console.log("Fatal error encountered, destroying HLS instance");
+                        hls.destroy();
+                        break;
+                }
+            }
+        });
+
+      } else {
+        // Браузер не поддерживает HLS ни нативно, ни через Hls.js
+        console.error("HLS is not supported in this browser");
+        // Можно показать сообщение пользователю или попробовать другой метод
+        // Например, использовать старый стриминг, если файл не транскодирован
+        if(file.transcoding_status !== 'completed') {
+             video.src = fileUrl; // Используем старый стриминг как запасной вариант
+        } else {
+             // Сообщить пользователю о проблеме
+             console.warn("Video is transcoded but browser does not support HLS playback.");
+        }
+      }
+    }
+
+    // Очистка при размонтировании или смене файла
+    return () => {
+      if (hlsRef.current) {
+        console.log("Destroying HLS instance");
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      // Также сбросим src видео, чтобы избежать утечек
+      if(video) {
+        video.src = '';
+        video.load(); // Сбросить состояние видео
+      }
+    };
+  }, [file.id, file.mime_type, file.transcoding_status, file.hls_manifest_path]); // Зависимости: важны для перезапуска при смене файла
 
   // Видео события
   useEffect(() => {
@@ -733,21 +846,23 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                     transition: isVideoPanning ? 'none' : 'transform 0.15s ease',
                   }}
                 >
+                  {/* --- ИЗМЕНЕНИЕ: видео без src напрямую --- */}
                   <video
                     ref={videoRef}
-                    src={getFileUrl()}
+                    // src={getFileUrl()} // Убираем src, так как он устанавливается через Hls.js или нативно
                     autoPlay
                     muted={isMuted}
                     volume={volume}
                     className="block max-w-none max-h-none"
                     style={{
-                      width: `${videoNatural.width}px`,
-                      height: `${videoNatural.height}px`,
+                      // width и height можно оставить или убрать, если плеер сам управляет
+                      // width: `${videoNatural.width}px`,
+                      // height: `${videoNatural.height}px`,
                       maxWidth: '100%',
                       maxHeight: '100%',
                       objectFit: 'contain'
                     }}
-                    preload="metadata"
+                    preload="metadata" // Можно изменить на "auto" для более агрессивной предзагрузки
                     playsInline
                   />
                 </div>

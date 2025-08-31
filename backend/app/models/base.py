@@ -45,6 +45,12 @@ class File(Base):
     thumbnail_path = Column(Text)
     preview_path = Column(Text)
     description = Column(Text)
+    # Добавляем поля для DASH/HLS
+    transcoding_status = Column(String(20), default="pending") # "pending", "processing", "completed", "failed"
+    dash_manifest_path = Column(Text) # Путь к .mpd файлу в S3
+    hls_manifest_path = Column(Text) # Путь к основному .m3u8 файлу в S3
+    # Можно добавить поле для хранения информации о рендициях, если нужно
+    renditions_info = Column(JSONB) # [{"path": "...", "bitrate": 1000000, "resolution": "1280x720"}, ...]
     owner_id = Column(UUIDType(as_uuid=True), ForeignKey("users.id"), nullable=False)
     tags = Column(JSONB, default=list)
     category_id = Column(UUIDType(as_uuid=True), ForeignKey("categories.id"))

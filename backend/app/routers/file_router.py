@@ -184,7 +184,6 @@ def get_manifest(
     current_user: User = Depends(get_current_user),
 ):
     """Отдает манифест (HLS или DASH) из S3."""
-    print('test')
     try:
         file = get_file_by_id(file_id)
         if not file:

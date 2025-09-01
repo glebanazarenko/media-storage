@@ -25,3 +25,4 @@ botocore
 Pillow
 opencv-python-headless
 requests
+ffmpeg-python

@@ -1,31 +1,28 @@
 import os
 import uuid
-import subprocess
 import shutil
 import logging
-import json
 import concurrent.futures
 from typing import List, Dict, Any, Optional
+
+import ffmpeg
 
 from app.core.config import settings
 from app.models.base import File
 from app.core.database import get_db_session, s3_client
 
 # --- Настройки пула потоков и ресурсов ---
-# Максимальное количество одновременных задач транскодирования
-MAX_WORKERS = 1 # Строго 1 для слабого сервера
-# Максимальное количество потоков ЦП для ОДНОГО процесса ffmpeg
-FFMPEG_THREADS = 1 # Только 1 ядро на процесс
-# Приоритет nice для процесса ffmpeg (от -20 до 19, чем выше, тем ниже приоритет)
-FFMPEG_NICE = 19 # Минимальный приоритет (очень низкий)
-# Очень щадящие настройки кодирования
-FFMPEG_PRESET = "veryslow" # Самый медленный, но самый легкий для CPU
+MAX_WORKERS = 1
+FFMPEG_THREADS = 1
+FFMPEG_NICE = 19
+FFMPEG_PRESET = "ultrafast"
 # --- Таймауты ---
-BASE_TIMEOUT = 10800      # 3 часа минут базовый таймаут
-TIMEOUT_PER_GB = 3600    # 60 минут на ГБ
-MAX_TIMEOUT = 10800      # Максимум 3 часа (10800 секунд)
-# Длительность сегмента HLS
-SEGMENT_DURATION = 6     # Увеличено до 6 секунд
+BASE_TIMEOUT = 10800
+TIMEOUT_PER_GB = 3600
+MAX_TIMEOUT = 10800
+SEGMENT_DURATION = 10  # Увеличено для скорости
+# --- Оптимизации ---
+USE_COPY_CODEC = True  # Попытка копирования без перекодирования
 
 # Создаем пул потоков на уровне модуля
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS)
@@ -52,138 +49,187 @@ def _calculate_timeout(file_path: str) -> int:
 def _probe_audio_streams(file_path: str) -> bool:
     """Проверяет наличие аудио потоков в файле."""
     try:
-        probe_cmd = f"ffprobe -v quiet -print_format json -show_streams '{file_path}'"
-        result = subprocess.run(
-            probe_cmd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=30
-        )
-        if result.returncode == 0:
-            probe_data = json.loads(result.stdout)
-            audio_streams = [s for s in probe_data.get("streams", []) if s.get("codec_type") == "audio"]
-            return len(audio_streams) > 0
-        else:
-            logger.warning(f"ffprobe failed for {file_path}: {result.stderr}")
+        probe = ffmpeg.probe(file_path)
+        audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+        return len(audio_streams) > 0
     except Exception as e:
         logger.warning(f"Error probing audio streams for {file_path}: {e}")
     return True
 
-def _build_ffmpeg_command(
+def _can_copy_codec(input_path: str) -> tuple[bool, str, str]:
+    """Проверяет, можно ли использовать copy codec"""
+    try:
+        probe = ffmpeg.probe(input_path)
+        video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
+        audio_stream = next((s for s in probe['streams'] if s['codec_type'] == 'audio'), None)
+        
+        video_codec = video_stream.get('codec_name', '') if video_stream else ''
+        audio_codec = audio_stream.get('codec_name', '') if audio_stream else ''
+        
+        # Проверяем поддерживаемые кодеки для HLS
+        supported_video = video_codec in ['h264', 'hevc']
+        supported_audio = audio_codec in ['aac', 'mp3']
+        
+        return supported_video and supported_audio, video_codec, audio_codec
+    except Exception as e:
+        logger.warning(f"Error checking copy codec capability: {e}")
+        return False, '', ''
+
+def _get_all_renditions() -> List[Dict[str, Any]]:
+    """Все рендитции: 360p, 480p, 720p, 1080p"""
+    return [
+        {"name": "360p", "height": 360, "video_bitrate": "300k", "audio_bitrate": "48k"}
+    ]
+
+def _try_copy_transcode_all(input_path: str, output_dir: str, segment_duration: int, has_audio: bool, renditions: List[Dict[str, Any]]) -> bool:
+    """Попытка транскодирования без перекодирования для всех рендитций"""
+    try:
+        # Создаем директории для всех рендитций
+        for i, rendition in enumerate(renditions):
+            stream_dir = os.path.join(output_dir, f"stream_{i}")
+            os.makedirs(stream_dir, exist_ok=True)
+        
+        # Копируем исходный файл в каждый поток
+        for i, rendition in enumerate(renditions):
+            stream_dir = os.path.join(output_dir, f"stream_{i}")
+            playlist_path = os.path.join(stream_dir, 'playlist.m3u8')
+            
+            # Для каждого потока создаем отдельный плейлист с тем же видео
+            stream = ffmpeg.input(input_path)
+            
+            if has_audio:
+                output = ffmpeg.output(
+                    stream.video, stream.audio,
+                    playlist_path,
+                    format='hls',
+                    hls_time=segment_duration,
+                    hls_list_size=0,
+                    c='copy',  # Копируем без перекодирования
+                    threads=FFMPEG_THREADS
+                )
+            else:
+                output = ffmpeg.output(
+                    stream.video,
+                    playlist_path,
+                    format='hls',
+                    hls_time=segment_duration,
+                    hls_list_size=0,
+                    c='copy',
+                    threads=FFMPEG_THREADS
+                )
+            
+            ffmpeg.run(output, overwrite_output=True, quiet=True)
+            logger.info(f"Copy transcode successful for rendition {rendition['name']}")
+        
+        return True
+        
+    except Exception as e:
+        logger.warning(f"Copy transcode failed for all renditions: {e}")
+        return False
+
+def _build_fast_hls_commands(
     input_path: str,
     output_dir: str,
     renditions: List[Dict[str, Any]],
     segment_duration: int,
     has_audio: bool
-) -> List[str]:
-    """Строит команду ffmpeg для HLS транскодирования как список аргументов."""
-    num_renditions = len(renditions)
-
-    # Начинаем с команды nice и ffmpeg
-    cmd_args = [
-        "nice", "-n", str(FFMPEG_NICE),
-        "ffmpeg", "-y", "-threads", str(FFMPEG_THREADS),
-        "-i", input_path,
-        "-preset", FFMPEG_PRESET
-    ]
-
-    # Создаем фильтры
-    video_splits = "".join([f"[v{i}]" for i in range(num_renditions)])
-    filter_parts = [f"[0:v]split={num_renditions}{video_splits}"]
-
+) -> List[Any]:
+    """Строит максимально быстрые команды для всех рендитций"""
+    
+    commands = []
+    
     for i, rendition in enumerate(renditions):
-        height = rendition["height"]
-        filter_parts.append(f"[v{i}]scale=-2:{height},setsar=1[vout{i}]")
+        stream_dir = os.path.join(output_dir, f"stream_{i}")
+        os.makedirs(stream_dir, exist_ok=True)
+        
+        try:
+            stream = ffmpeg.input(input_path)
+            
+            # Простое масштабирование без сложных фильтров
+            video = stream.video.filter('scale', -2, rendition['height'])
+            
+            if has_audio:
+                audio = stream.audio
+                output = ffmpeg.output(
+                    video, audio,
+                    os.path.join(stream_dir, 'playlist.m3u8'),
+                    format='hls',
+                    hls_time=segment_duration,
+                    hls_list_size=0,
+                    video_bitrate=rendition['video_bitrate'],
+                    audio_bitrate=rendition['audio_bitrate'],
+                    preset=FFMPEG_PRESET,
+                    threads=FFMPEG_THREADS,
+                    crf=28,  # Более низкое качество для скорости
+                    maxrate=rendition['video_bitrate'],
+                    bufsize=rendition['video_bitrate']
+                )
+            else:
+                output = ffmpeg.output(
+                    video,
+                    os.path.join(stream_dir, 'playlist.m3u8'),
+                    format='hls',
+                    hls_time=segment_duration,
+                    hls_list_size=0,
+                    video_bitrate=rendition['video_bitrate'],
+                    preset=FFMPEG_PRESET,
+                    threads=FFMPEG_THREADS,
+                    crf=28
+                )
+            
+            commands.append((output, i, rendition))
+            
+        except Exception as e:
+            logger.error(f"Error building fast command for rendition {rendition['name']}: {e}")
+            continue
+    
+    return commands
 
-    if has_audio:
-        audio_splits = "".join([f"[a{i}]" for i in range(num_renditions)])
-        filter_parts.insert(1, f"[0:a]asplit={num_renditions}{audio_splits}")
-        for i in range(num_renditions):
-            filter_parts.append(f"[a{i}]anull[aout{i}]")
-
-    filter_complex = ";".join(filter_parts)
-    cmd_args.extend(["-filter_complex", filter_complex])
-
-    # Добавляем map для каждого выхода фильтра
-    for i in range(num_renditions):
-        cmd_args.extend(["-map", f"[vout{i}]"])
-        if has_audio:
-            cmd_args.extend(["-map", f"[aout{i}]"])
-
-    # Формируем var_stream_map
-    var_stream_map_parts = []
-    for i in range(num_renditions):
-        if has_audio:
-            var_stream_map_parts.append(f"v:{i},a:{i}")
-        else:
-            var_stream_map_parts.append(f"v:{i}")
-    var_stream_map = " ".join(var_stream_map_parts)
-
-    # Добавляем остальные параметры HLS
-    cmd_args.extend([
-        "-var_stream_map", var_stream_map,
-        "-master_pl_name", "master.m3u8",
-        "-f", "hls",
-        "-hls_time", str(segment_duration),
-        "-hls_list_size", "0",
-        "-hls_segment_filename", f"{output_dir}/stream_%v/segment_%04d.ts",
-    ])
-
-    # Параметры кодирования для каждой рендиции
-    for i, rendition in enumerate(renditions):
-        cmd_args.extend([f"-b:v:{i}", rendition['video_bitrate']])
-        if has_audio:
-            cmd_args.extend([f"-b:a:{i}", rendition['audio_bitrate']])
-
-    # Выходной файл (шаблон)
-    cmd_args.append(f"{output_dir}/stream_%v/playlist.m3u8")
-
-    return cmd_args
-
-def _run_ffmpeg_with_timeout(cmd_args: List[str], timeout: int) -> bool:
-    """Запускает команду ffmpeg с таймаутом и логгированием."""
+def _run_ffmpeg_commands_fast(commands: List[tuple], timeout: int) -> bool:
+    """Быстрый запуск ffmpeg команд последовательно"""
     try:
-        cmd_str = " ".join(cmd_args)
-        logger.info(f"Running FFmpeg command with timeout {timeout}s: {cmd_str}")
-
-        # Запуск без shell=True для лучшей безопасности и обработки аргументов
-        result = subprocess.run(
-            cmd_args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=timeout
-        )
-        logger.info(f"FFmpeg command output (return code {result.returncode}):\n{result.stdout}")
-        if result.returncode != 0:
-            logger.error(f"FFmpeg error (return code {result.returncode})")
-            return False
-        logger.info("FFmpeg command completed successfully")
+        for command, index, rendition in commands:
+            logger.info(f"Running fast ffmpeg command {index+1}/{len(commands)} for {rendition['name']}")
+            
+            # Упрощенный запуск без лишнего логгирования
+            ffmpeg.run(command, overwrite_output=True, quiet=True)
+            
+            logger.info(f"Fast ffmpeg command completed for {rendition['name']}")
+        
         return True
-    except subprocess.TimeoutExpired:
-        logger.error(f"FFmpeg command timed out after {timeout} seconds")
-        return False
     except Exception as e:
-        logger.error(f"Exception running FFmpeg command: {e}")
+        logger.error(f"Error running fast ffmpeg commands: {e}")
         return False
 
-def _upload_to_s3(local_dir: str, s3_base_path: str, file_id: str):
-    """Загружает файлы из локальной директории в S3."""
-    logger.info(f"Uploading transcoded files from {local_dir} to S3 path {s3_base_path} for file ID: {file_id}")
+def _create_master_playlist(output_dir: str, renditions: List[Dict[str, Any]]):
+    """Создает мастер плейлист для всех рендитций"""
+    master_playlist_path = os.path.join(output_dir, "master.m3u8")
+    
+    with open(master_playlist_path, 'w') as f:
+        f.write("#EXTM3U\n")
+        f.write("#EXT-X-VERSION:3\n")
+        
+        for i, rendition in enumerate(renditions):
+            # Рассчитываем полосу пропускания
+            bandwidth = int(rendition['video_bitrate'].replace('k', '')) * 1000
+            if 'audio_bitrate' in rendition:
+                bandwidth += int(rendition['audio_bitrate'].replace('k', '')) * 1000
+            
+            resolution = f"640x{rendition['height']}"  # Примерная ширина
+            f.write(f"#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},RESOLUTION={resolution}\n")
+            f.write(f"stream_{i}/playlist.m3u8\n")
+
+def _upload_to_s3_complete(local_dir: str, s3_base_path: str, file_id: str):
+    """Полная загрузка всех рендитций в S3"""
+    logger.info(f"Complete uploading to S3 path {s3_base_path} for file ID: {file_id}")
     s3_hls_path = f"{s3_base_path}/hls"
 
     master_playlist_local = os.path.join(local_dir, "master.m3u8")
     if os.path.exists(master_playlist_local):
         s3_key_master = f"{s3_hls_path}/master.m3u8"
-        logger.info(f"Uploading master playlist to S3: {s3_key_master}")
         s3_client.upload_file(master_playlist_local, settings.AWS_S3_BUCKET_NAME, s3_key_master)
-    else:
-        logger.error(f"Master playlist not found at {master_playlist_local}")
-        raise FileNotFoundError(f"Master playlist not found at {master_playlist_local}")
 
-    # Загружаем сегменты и плейлисты для каждой рендиции
+    # Загружаем все рендитции
     for item in os.listdir(local_dir):
         item_path = os.path.join(local_dir, item)
         if os.path.isdir(item_path) and item.startswith("stream_"):
@@ -192,12 +238,11 @@ def _upload_to_s3(local_dir: str, s3_base_path: str, file_id: str):
                 local_file_path = os.path.join(item_path, filename)
                 if os.path.isfile(local_file_path):
                     s3_key = f"{s3_hls_path}/{item}/{filename}"
-                    logger.debug(f"Uploading {local_file_path} to S3: {s3_key}")
                     s3_client.upload_file(local_file_path, settings.AWS_S3_BUCKET_NAME, s3_key)
 
 def _transcode_video_task_internal(file_id: str):
     """Внутренняя функция, выполняющая фактическое транскодирование."""
-    logger.info(f"[Worker Thread] Transcoding task started for file ID: {file_id}")
+    logger.info(f"[Worker Thread] Fast transcoding task started for file ID: {file_id}")
     temp_dir: Optional[str] = None
     try:
         with get_db_session() as db:
@@ -209,7 +254,6 @@ def _transcode_video_task_internal(file_id: str):
             if not file_record.mime_type or not file_record.mime_type.startswith("video/"):
                 logger.info(f"[Worker Thread] File {file_id} is not a video, skipping transcoding.")
                 file_record.transcoding_status = "completed"
-                # commit handled by context manager
                 return
 
             logger.info(f"[Worker Thread] Setting transcoding status to 'processing' for file ID: {file_id}")
@@ -225,59 +269,71 @@ def _transcode_video_task_internal(file_id: str):
             logger.info(f"[Worker Thread] Downloading file {file_record.file_path} from S3 to {original_local_path}")
             s3_client.download_file(settings.AWS_S3_BUCKET_NAME, file_record.file_path, original_local_path)
 
-            # --- Настройки транскодирования ---
-            # Минимум рендиций для экономии ресурсов
-            renditions: List[Dict[str, Any]] = [
-                {"name": "360p", "height": 360, "video_bitrate": "500k", "audio_bitrate": "64k"}, # Очень низкие битрейты
-                {"name": "480p", "height": 480, "video_bitrate": "800k", "audio_bitrate": "96k"},
-                # {"name": "720p", "height": 720, "video_bitrate": "1500k", "audio_bitrate": "128k"}, // Можно добавить позже
-            ]
-
+            # Все рендитции
+            renditions = _get_all_renditions()
+            
             has_audio = _probe_audio_streams(original_local_path)
             logger.info(f"[Worker Thread] Audio streams detected: {has_audio}")
 
-            ffmpeg_cmd_args = _build_ffmpeg_command(
-                original_local_path, output_dir, renditions, SEGMENT_DURATION, has_audio
-            )
-
             timeout = _calculate_timeout(original_local_path)
-            if not _run_ffmpeg_with_timeout(ffmpeg_cmd_args, timeout):
-                raise Exception("HLS transcoding failed")
+            
+            # Попытка copy transcode (самый быстрый способ)
+            if USE_COPY_CODEC:
+                can_copy, video_codec, audio_codec = _can_copy_codec(original_local_path)
+                logger.info(f"Copy codec capability: {can_copy}, Video: {video_codec}, Audio: {audio_codec}")
+                
+                if can_copy and _try_copy_transcode_all(original_local_path, output_dir, SEGMENT_DURATION, has_audio, renditions):
+                    logger.info("Using copy transcode - fastest method for all renditions")
+                    # Создаем мастер плейлист для всех рендитций
+                    _create_master_playlist(output_dir, renditions)
+                else:
+                    # Быстрое перекодирование всех рендитций
+                    commands = _build_fast_hls_commands(
+                        original_local_path, output_dir, renditions, SEGMENT_DURATION, has_audio
+                    )
+                    
+                    if commands and not _run_ffmpeg_commands_fast(commands, timeout):
+                        raise Exception("Fast HLS transcoding failed")
+                    
+                    # Создаем мастер плейлист для всех рендитций
+                    _create_master_playlist(output_dir, renditions)
+            else:
+                # Быстрое перекодирование всех рендитций
+                commands = _build_fast_hls_commands(
+                    original_local_path, output_dir, renditions, SEGMENT_DURATION, has_audio
+                )
+                
+                if commands and not _run_ffmpeg_commands_fast(commands, timeout):
+                    raise Exception("Fast HLS transcoding failed")
+                
+                # Создаем мастер плейлист для всех рендитций
+                _create_master_playlist(output_dir, renditions)
 
             base_s3_path = f"transcoded/{file_record.id}"
-            _upload_to_s3(os.path.join(temp_dir, "output", "hls"), base_s3_path, file_id)
+            _upload_to_s3_complete(os.path.join(temp_dir, "output", "hls"), base_s3_path, file_id)
 
             logger.info(f"[Worker Thread] Setting transcoding status to 'completed' for file ID: {file_id}")
             file_record.hls_manifest_path = f"{base_s3_path}/hls/master.m3u8"
             file_record.transcoding_status = "completed"
-            logger.info(f"[Worker Thread] Transcoding completed successfully for file {file_id}")
+            logger.info(f"[Worker Thread] Fast transcoding completed successfully for file {file_id}")
 
     except Exception as e:
-        logger.error(f"[Worker Thread] Error during transcoding for file {file_id}: {e}", exc_info=True)
+        logger.error(f"[Worker Thread] Error during fast transcoding for file {file_id}: {e}", exc_info=True)
         try:
-            # Открываем новую сессию для обновления статуса на "failed"
             with get_db_session() as db_fail:
                 file_record_fail = db_fail.query(File).filter(File.id == file_id).first()
                 if file_record_fail:
                     logger.info(f"[Worker Thread] Updating transcoding status to 'failed' for file ID: {file_id}")
                     file_record_fail.transcoding_status = "failed"
-                    # commit handled by context manager
         except Exception as db_error:
             logger.error(f"[Worker Thread] Error updating DB status to 'failed' for file {file_id}: {db_error}")
     finally:
         if temp_dir and os.path.exists(temp_dir):
             logger.info(f"[Worker Thread] Cleaning up temporary files for file ID: {file_id} (path: {temp_dir})")
             shutil.rmtree(temp_dir, ignore_errors=True)
-        logger.info(f"[Worker Thread] Transcoding task finished for file ID: {file_id}")
+        logger.info(f"[Worker Thread] Fast transcoding task finished for file ID: {file_id}")
 
 def start_transcoding(file_id: str):
     """Запуск задачи транскодирования через пул потоков."""
-    logger.info(f"Scheduling transcoding task for file ID: {file_id}")
-    # Отправляем задачу в пул потоков
+    logger.info(f"Scheduling fast transcoding task for file ID: {file_id}")
     future = executor.submit(_transcode_video_task_internal, file_id)
-    # Для production с Celery это будет выглядеть как task.delay()
-
-# --- Опционально: Функция для корректного завершения пула ---
-# def shutdown_executor():
-#     executor.shutdown(wait=True)
-#     logger.info("Transcoding executor shut down.")

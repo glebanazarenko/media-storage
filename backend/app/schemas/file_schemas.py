@@ -28,6 +28,7 @@ class FileResponse(FileCreate):
     transcoding_status: Optional[str] = "pending" # Убедитесь, что тип совпадает с моделью SQLAlchemy
     hls_manifest_path: Optional[str] = None
     dash_manifest_path: Optional[str] = None
+    file_record: Optional[float] = None
 
     class Config:
         from_attributes = True

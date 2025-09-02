@@ -82,6 +82,7 @@ const resources = {
       'file.sortByDate': 'Sort by Date',
       'file.sortByName': 'Sort by Name',
       'file.sortBySize': 'Sort by Size',
+      'file.sortByDuration': 'Sort by Duration',
       'file.ascending': 'Ascending',
       'file.descending': 'Descending',
       'file.allFiles': 'All Files',
@@ -218,6 +219,10 @@ const resources = {
       'common.name': 'Name',
       'common.date': 'Date',
       'common.size': 'Size',
+      'common.duration': 'Duration',
+      'common.second': 'sec',
+      'common.minDuration': 'Min duration',
+      'common.maxDuration': 'Max duration',
       'common.noDescriptionOrTags': 'No description or tags',
     }
   },
@@ -301,6 +306,7 @@ const resources = {
       'file.sortByDate': 'Сортировать по дате',
       'file.sortByName': 'Сортировать по имени',
       'file.sortBySize': 'Сортировать по размеру',
+      'file.sortByDuration': 'Сортировать по длине',
       'file.ascending': 'По возрастанию',
       'file.descending': 'По убыванию',
       'file.allFiles': 'Все файлы',
@@ -437,6 +443,10 @@ const resources = {
       'common.name': 'Название',
       'common.date': 'Дата',
       'common.size': 'Размер',
+      'common.duration': 'Длительность',
+      'common.second': 'сек',
+      'common.minDuration': 'Мин длительность',
+      'common.maxDuration': 'Макс длительность',
       'common.noDescriptionOrTags': 'Нет описания или тегов',
     }
   }

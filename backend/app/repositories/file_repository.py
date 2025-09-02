@@ -121,6 +121,8 @@ def search_files(
     category: str | None = None,
     include_tags: list[str] = None,
     exclude_tags: list[str] = None,
+    min_duration: float | None = None,
+    max_duration: float | None = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
     page: int = 1,
@@ -179,6 +181,12 @@ def search_files(
                     not_(DBFile.tags.contains([tag_id])) for tag_id in exclude_tag_ids
                 ]
                 query_obj = query_obj.filter(and_(*exclude_conditions))
+
+        # Применение фильтров по длительности ---
+        if min_duration is not None:
+            query_obj = query_obj.filter(DBFile.duration >= min_duration)
+        if max_duration is not None:
+            query_obj = query_obj.filter(DBFile.duration <= max_duration)
 
         sort_attr = getattr(DBFile, sort_by, DBFile.created_at)
         order_func = desc if sort_order == "desc" else asc

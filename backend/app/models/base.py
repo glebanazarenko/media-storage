@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import TIMESTAMP
+from sqlalchemy import TIMESTAMP, Float
 from sqlalchemy import UUID as UUIDType
 from sqlalchemy import Boolean, Column, ForeignKey, BigInteger, String, Table, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -51,6 +51,8 @@ class File(Base):
     hls_manifest_path = Column(Text) # Путь к основному .m3u8 файлу в S3
     # Можно добавить поле для хранения информации о рендициях, если нужно
     renditions_info = Column(JSONB) # [{"path": "...", "bitrate": 1000000, "resolution": "1280x720"}, ...]
+    # Добавляем поле для длительности видео (в секундах)
+    duration = Column(Float) # NULLABLE по умолчанию, для не-видео файлов или если не определено
     owner_id = Column(UUIDType(as_uuid=True), ForeignKey("users.id"), nullable=False)
     tags = Column(JSONB, default=list)
     category_id = Column(UUIDType(as_uuid=True), ForeignKey("categories.id"))

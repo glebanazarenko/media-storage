@@ -1,4 +1,5 @@
 import re
+import ffmpeg
 import uuid
 from typing import List
 from urllib.parse import quote
@@ -31,7 +32,7 @@ import mimetypes
 from urllib.parse import urlparse
 from fastapi import UploadFile, File, HTTPException
 
-SORT_FIELD_MAP = {"date": "created_at", "name": "original_name", "size": "size"}
+SORT_FIELD_MAP = {"date": "created_at", "name": "original_name", "size": "size", "duration": 'duration'}
 
 
 def generate_key(filename: str) -> str:
@@ -66,8 +67,6 @@ def save_file_metadata(
     if file.content_type.startswith("image/") or file.content_type.startswith("video/"):
         # Создайте превью отдельно, не загружая весь файл в память
         thumbnail_key = create_thumbnail_from_s3(key, file.content_type)
-
-    print(thumbnail_key)
 
     file_create = FileCreate(
         original_name=file.filename,
@@ -129,6 +128,8 @@ def search_files_service(
     category: str | None = None,
     include_tags: str = None,
     exclude_tags: str = None,
+    min_duration: float | None = None,
+    max_duration: float | None = None,
     sort_by: str = "created_at",
     sort_order: str = "desc",
     page: int = 1,
@@ -147,6 +148,8 @@ def search_files_service(
         category=category,
         include_tags=include_tags,
         exclude_tags=exclude_tags,
+        min_duration=min_duration,
+        max_duration=max_duration,
         sort_by=sort_column,
         sort_order=sort_order,
         page=page,
@@ -476,3 +479,42 @@ class FileStorageService:
                 )
             except ClientError as e:
                 print(f"Failed to delete thumbnail from S3: {str(e)}")
+
+        # Проверяем, есть ли путь к HLS манифесту (это указывает на наличие транскодированных файлов)
+        if file.hls_manifest_path:
+            try:
+                # Определяем базовый префикс для файлов транскодирования
+                # hls_manifest_path обычно выглядит как transcoded/<file_id>/hls/master.m3u8
+                # Нам нужно удалить всю папку transcoded/<file_id>/hls/
+                hls_s3_base_parts = file.hls_manifest_path.split('/')
+                if len(hls_s3_base_parts) >= 3:
+                     # Формируем префикс папки: transcoded/<file_id>/hls/
+                    transcoded_prefix = f"transcoded/{file.id}/hls/"
+
+                    # Используем пагинатор для перечисления и удаления всех объектов с этим префиксом
+                    paginator = s3_client.get_paginator('list_objects_v2')
+                    pages = paginator.paginate(Bucket=settings.AWS_S3_BUCKET_NAME, Prefix=transcoded_prefix)
+
+                    delete_keys = []
+                    for page in pages:
+                        if 'Contents' in page:
+                            for obj in page['Contents']:
+                                delete_keys.append({'Key': obj['Key']})
+
+                    # Удаляем объекты пакетно (DeleteObjects принимает до 1000 ключей за раз)
+                    if delete_keys:
+                        for i in range(0, len(delete_keys), 1000):
+                            batch = delete_keys[i:i + 1000]
+                            s3_client.delete_objects(
+                                Bucket=settings.AWS_S3_BUCKET_NAME,
+                                Delete={'Objects': batch}
+                            )
+                        print(f"Deleted transcoded files for file ID {file.id} from S3 prefix: {transcoded_prefix}")
+                    else:
+                        print(f"No transcoded files found in S3 prefix: {transcoded_prefix} for file ID {file.id}")
+
+            except ClientError as e:
+                print(f"Failed to delete transcoded files from S3 for file ID {file.id}: {str(e)}")
+            except Exception as e:
+                 print(f"An unexpected error occurred while deleting transcoded files for file ID {file.id}: {str(e)}")
+

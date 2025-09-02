@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shutil
 import tempfile
 import uuid
 import zipfile
@@ -123,6 +124,8 @@ class BackupService:
                 "owner_username": current_user.username,  # Добавляем username для сопоставления
                 "created_at": str(file.created_at),
                 "updated_at": str(file.updated_at),
+                "transcoding_status": file.transcoding_status,
+                "duration": file.duration,
             }
             backup_data["files"].append(file_data)
 
@@ -205,6 +208,8 @@ class BackupService:
                 "owner_username": owner_username,  # Используем username для сопоставления
                 "created_at": str(file.created_at),
                 "updated_at": str(file.updated_at),
+                "transcoding_status": file.transcoding_status,
+                "duration": file.duration,
             }
             backup_data["files"].append(file_data)
 
@@ -237,43 +242,82 @@ class BackupService:
     ) -> io.BytesIO:
         """Создает ZIP архив с данными бэкапа"""
         zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            # Добавляем JSON с метаданными
-            json_data = json.dumps(backup_data, indent=2, ensure_ascii=False)
-            zip_file.writestr("backup_metadata.json", json_data)
+        with tempfile.TemporaryDirectory() as temp_dir: # Используем временную директорию
+            zip_path = os.path.join(temp_dir, "backup.zip")
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                # Добавляем JSON с метаданными
+                json_data = json.dumps(backup_data, indent=2, ensure_ascii=False)
+                zip_file.writestr("backup_metadata.json", json_data)
 
-            # Добавляем реальные файлы из S3
-            for file in files:
-                try:
-                    # Добавляем основной файл
-                    if file.file_path:
-                        file_content = self._download_file_from_s3(file.file_path)
-                        zip_file.writestr(
-                            f"files/{file.id}_{file.original_name}", file_content
-                        )
+                # Добавляем реальные файлы из S3
+                for file in files:
+                    try:
+                        # Добавляем основной файл
+                        if file.file_path:
+                            file_content = self._download_file_from_s3(file.file_path)
+                            zip_file.writestr(
+                                f"files/{file.id}_{file.original_name}", file_content
+                            )
+                        # Добавляем thumbnail, если есть
+                        if file.thumbnail_path:
+                            thumbnail_content = self._download_file_from_s3(
+                                file.thumbnail_path
+                            )
+                            zip_file.writestr(
+                                f"thumbnails/{file.id}_thumbnail.jpg", thumbnail_content
+                            )
+                        # Добавляем preview, если есть
+                        if file.preview_path:
+                            preview_content = self._download_file_from_s3(file.preview_path)
+                            zip_file.writestr(
+                                f"previews/{file.id}_preview.jpg", preview_content
+                            )
 
-                    # Добавляем thumbnail, если есть
-                    if file.thumbnail_path:
-                        thumbnail_content = self._download_file_from_s3(
-                            file.thumbnail_path
-                        )
-                        zip_file.writestr(
-                            f"thumbnails/{file.id}_thumbnail.jpg", thumbnail_content
-                        )
+                        # Добавляем транскодированные файлы ---
+                        if file.hls_manifest_path:
+                            # Определяем базовый путь к транскодированным данным в S3
+                            # hls_manifest_path обычно выглядит как transcoded/<file_id>/hls/master.m3u8
+                            # Нам нужна папка transcoded/<file_id>/hls/
+                            hls_s3_base_parts = file.hls_manifest_path.split('/')
+                            if len(hls_s3_base_parts) >= 3:
+                                hls_s3_base_key = '/'.join(hls_s3_base_parts[:-1]) + '/' # Путь к папке hls
+                                # Создаем временную папку для транскодированных файлов этого файла
+                                hls_temp_dir = os.path.join(temp_dir, f"hls_files/{file.id}")
+                                os.makedirs(hls_temp_dir, exist_ok=True)
 
-                    # Добавляем preview, если есть
-                    if file.preview_path:
-                        preview_content = self._download_file_from_s3(file.preview_path)
-                        zip_file.writestr(
-                            f"previews/{file.id}_preview.jpg", preview_content
-                        )
+                                try:
+                                    # Список объектов в S3 по префиксу
+                                    paginator = s3_client.get_paginator('list_objects_v2')
+                                    pages = paginator.paginate(Bucket=settings.AWS_S3_BUCKET_NAME, Prefix=hls_s3_base_key)
 
-                except Exception as e:
-                    print(f"Warning: Could not backup file {file.id}: {str(e)}")
-                    # Продолжаем с другими файлами даже если один не удался
+                                    for page in pages:
+                                        if 'Contents' in page:
+                                            for obj in page['Contents']:
+                                                s3_key = obj['Key']
+                                                # Скачиваем файл во временную папку
+                                                # Вычисляем относительный путь внутри папки транскодирования
+                                                relative_s3_key = s3_key[len(hls_s3_base_key):] # Убираем базовый префикс
+                                                if relative_s3_key: # Убедимся, что ключ не пустой (это сама папка)
+                                                    local_file_path = os.path.join(hls_temp_dir, relative_s3_key)
+                                                    os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                                                    s3_client.download_file(settings.AWS_S3_BUCKET_NAME, s3_key, local_file_path)
+                                                    # Добавляем файл в ZIP, сохраняя структуру папок
+                                                    zip_arcname = f"transcoded/{file.id}/hls/{relative_s3_key}"
+                                                    zip_file.write(local_file_path, arcname=zip_arcname)
 
-        zip_buffer.seek(0)
-        return zip_buffer
+                                except ClientError as e:
+                                    print(f"Warning: Could not backup transcoded files for {file.id}: {str(e)}")
+                                    # Продолжаем, даже если транскодированные файлы не удалось забэкапить
+
+                    except Exception as e:
+                        print(f"Warning: Could not backup file {file.id}: {str(e)}")
+                        # Продолжаем с другими файлами даже если один не удался
+
+            # Читаем содержимое временного zip файла в BytesIO
+            with open(zip_path, 'rb') as f:
+                zip_buffer.write(f.read())
+            zip_buffer.seek(0)
+            return zip_buffer
 
     async def restore_backup(
         self, backup_file: UploadFile, current_user: User
@@ -492,7 +536,6 @@ class BackupService:
         file_content = None
         thumbnail_content = None
         preview_content = None
-
         # Ищем основной файл
         possible_file_paths = [
             os.path.join(
@@ -506,13 +549,11 @@ class BackupService:
             ),
             os.path.join(temp_dir, file_data["original_name"]),
         ]
-
         for path in possible_file_paths:
             if os.path.exists(path):
                 with open(path, "rb") as f:
                     file_content = f.read()
                 break
-
         # Ищем thumbnail
         if file_data.get("thumbnail_path"):
             possible_thumb_paths = [
@@ -526,13 +567,11 @@ class BackupService:
                     f"thumbnails/{file_data['id']}_thumbnail.jpg",
                 ),
             ]
-
             for path in possible_thumb_paths:
                 if os.path.exists(path):
                     with open(path, "rb") as f:
                         thumbnail_content = f.read()
                     break
-
         # Ищем preview
         if file_data.get("preview_path"):
             possible_preview_paths = [
@@ -546,7 +585,6 @@ class BackupService:
                     f"previews/{file_data['id']}_preview.jpg",
                 ),
             ]
-
             for path in possible_preview_paths:
                 if os.path.exists(path):
                     with open(path, "rb") as f:
@@ -557,6 +595,8 @@ class BackupService:
         file_uploaded = False
         thumbnail_uploaded = False
         preview_uploaded = False
+        transcoded_uploaded = False # Флаг для транскодированных файлов
+        hls_manifest_path_restored = file_data.get("hls_manifest_path") # Изначально предполагаем путь из бэкапа
 
         if file_content:
             try:
@@ -568,7 +608,6 @@ class BackupService:
                 file_uploaded = True
             except Exception as e:
                 print(f"Failed to upload file to S3: {str(e)}")
-
         if thumbnail_content and file_data.get("thumbnail_path"):
             try:
                 s3_client.put_object(
@@ -579,7 +618,6 @@ class BackupService:
                 thumbnail_uploaded = True
             except Exception as e:
                 print(f"Failed to upload thumbnail to S3: {str(e)}")
-
         if preview_content and file_data.get("preview_path"):
             try:
                 s3_client.put_object(
@@ -591,6 +629,41 @@ class BackupService:
             except Exception as e:
                 print(f"Failed to upload preview to S3: {str(e)}")
 
+        # Проверяем, есть ли папка с транскодированными файлами в распакованном архиве
+        hls_source_dir = os.path.join(temp_dir, "transcoded", file_data['id'], "hls")
+        if os.path.exists(hls_source_dir):
+            try:
+                # Определяем базовый путь в S3 для транскодированных файлов (как в transcode_service.py)
+                base_s3_path = f"transcoded/{file_data['id']}"
+                s3_hls_path = f"{base_s3_path}/hls"
+
+                # Загружаем мастер-плейлист
+                master_playlist_local = os.path.join(hls_source_dir, "master.m3u8")
+                if os.path.exists(master_playlist_local):
+                    s3_key_master = f"{s3_hls_path}/master.m3u8"
+                    s3_client.upload_file(master_playlist_local, settings.AWS_S3_BUCKET_NAME, s3_key_master)
+
+                # Загружаем все рендитции
+                for item in os.listdir(hls_source_dir):
+                    item_path = os.path.join(hls_source_dir, item)
+                    if os.path.isdir(item_path) and item.startswith("stream_"):
+                        # print(f"Uploading rendition directory {item} to S3") # Для логгирования
+                        for filename in os.listdir(item_path):
+                            local_file_path = os.path.join(item_path, filename)
+                            if os.path.isfile(local_file_path):
+                                s3_key = f"{s3_hls_path}/{item}/{filename}"
+                                s3_client.upload_file(local_file_path, settings.AWS_S3_BUCKET_NAME, s3_key)
+
+                transcoded_uploaded = True
+                # Обновляем путь к манифесту, если он был восстановлен
+                # (В принципе, путь должен быть такой же, как в file_data, но перезапишем на всякий случай)
+                hls_manifest_path_restored = f"{base_s3_path}/hls/master.m3u8"
+                # print(f"Restored HLS manifest path: {hls_manifest_path_restored}") # Для логгирования
+
+            except Exception as e:
+                print(f"Warning: Could not restore transcoded files for {file_data.get('id', 'unknown')}: {str(e)}")
+                # Не прерываем восстановление основного файла из-за ошибки транскодирования
+
         # Создаем запись в БД только если основной файл успешно загружен
         if file_uploaded:
             # Обрабатываем category_id
@@ -600,7 +673,6 @@ class BackupService:
                     category_id = uuid.UUID(file_data["category_id"])
                 except (ValueError, TypeError):
                     category_id = None
-
             new_file = DBFile(
                 id=uuid.UUID(file_data["id"]),
                 original_name=file_data["original_name"],
@@ -613,6 +685,9 @@ class BackupService:
                 preview_path=file_data.get("preview_path")
                 if preview_uploaded
                 else None,
+                hls_manifest_path=hls_manifest_path_restored if transcoded_uploaded else None,
+                transcoding_status=file_data.get("transcoding_status") or "not_started",
+                duration=file_data.get("duration") or None,
                 description=file_data.get("description"),
                 tags=file_data["tags"],
                 category_id=category_id,

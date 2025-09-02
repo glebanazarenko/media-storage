@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search as SearchIcon, Filter, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Search as SearchIcon, Filter, X } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { FileGrid } from '../components/files/FileGrid';
 import { TagInput } from '../components/files/TagInput';
@@ -26,6 +26,9 @@ export const Search: React.FC = () => {
   });
   const [pageInput, setPageInput] = useState('');
   
+  const [minDuration, setMinDuration] = useState<number | ''>('');
+  const [maxDuration, setMaxDuration] = useState<number | ''>('');
+  
   // Хук для работы с параметрами URL
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -38,15 +41,19 @@ export const Search: React.FC = () => {
     const order = searchParams.get('order') || 'desc';
     const tags = searchParams.get('tags')?.split(',') || [];
     const excludeTags = searchParams.get('exclude_tags')?.split(',') || [];
+    const minDur = searchParams.get('min_duration');
+    const maxDur = searchParams.get('max_duration');
     
     return {
       query,
       category: category as 'all' | '0+' | '16+' | '18+',
       page: isNaN(page) ? 1 : page,
-      sort: sort as 'date' | 'name' | 'size' | 'views' | 'downloads',
+      sort: sort as 'date' | 'name' | 'size' | 'duration', // Обновлен тип
       order: order as 'asc' | 'desc',
       tags,
-      excludeTags
+      excludeTags,
+      minDuration: minDur ? parseFloat(minDur) : undefined,
+      maxDuration: maxDur ? parseFloat(maxDur) : undefined,
     };
   }, [searchParams]);
 
@@ -94,6 +101,21 @@ export const Search: React.FC = () => {
       }
     }
     
+    if (filters.minDuration !== undefined) {
+      if (filters.minDuration !== '' && filters.minDuration !== undefined) {
+        newParams.set('min_duration', filters.minDuration.toString());
+      } else {
+        newParams.delete('min_duration');
+      }
+    }
+    if (filters.maxDuration !== undefined) {
+       if (filters.maxDuration !== '' && filters.maxDuration !== undefined) {
+        newParams.set('max_duration', filters.maxDuration.toString());
+      } else {
+        newParams.delete('max_duration');
+      }
+    }
+    
     setSearchParams(newParams);
   }, [searchParams, setSearchParams]);
 
@@ -111,8 +133,21 @@ export const Search: React.FC = () => {
       excludeTags: urlFilters.excludeTags
     }));
     
+    setMinDuration(urlFilters.minDuration !== undefined ? urlFilters.minDuration : '');
+    setMaxDuration(urlFilters.maxDuration !== undefined ? urlFilters.maxDuration : '');
+    
     // Загружаем файлы с параметрами из URL
-    performSearch(urlFilters.page, urlFilters.query, urlFilters.category, urlFilters.tags, urlFilters.excludeTags, urlFilters.sort, urlFilters.order);
+    performSearch(
+      urlFilters.page, 
+      urlFilters.query, 
+      urlFilters.category, 
+      urlFilters.tags, 
+      urlFilters.excludeTags, 
+      urlFilters.sort, 
+      urlFilters.order,
+      urlFilters.minDuration,
+      urlFilters.maxDuration
+    );
   }, [getFiltersFromURL, setSearchFilters]);
 
   // Функция для преобразования данных из API в формат FileItem
@@ -147,6 +182,7 @@ export const Search: React.FC = () => {
       transcoding_status: file.transcoding_status ?? null,
       hls_manifest_path: file.hls_manifest_path ?? null,
       dash_manifest_path: file.dash_manifest_path ?? null,
+      duration: file.duration ?? null,
     };
   };
 
@@ -157,7 +193,9 @@ export const Search: React.FC = () => {
     includeTags?: string[],
     excludeTags?: string[],
     sortBy?: string,
-    sortOrder?: string
+    sortOrder?: string,
+    minDur?: number,
+    maxDur?: number
   ) => {
     setLoading(true);
     try {
@@ -172,6 +210,8 @@ export const Search: React.FC = () => {
       if (excludeTags && excludeTags.length > 0) params.excludeTags = excludeTags.join(',');
       if (sortBy) params.sortBy = sortBy;
       if (sortOrder) params.sortOrder = sortOrder;
+      if (minDur !== undefined && minDur !== null) params.minDuration = minDur;
+      if (maxDur !== undefined && maxDur !== null) params.maxDuration = maxDur;
       
       const response = await filesAPI.searchFiles(params);
 
@@ -200,7 +240,9 @@ export const Search: React.FC = () => {
         tags: includeTags,
         excludeTags,
         sort: sortBy,
-        order: sortOrder
+        order: sortOrder,
+        minDuration: minDur,
+        maxDuration: maxDur
       });
     } catch (error) {
       console.error('Search error:', error);
@@ -224,6 +266,8 @@ export const Search: React.FC = () => {
       sortOrder: 'desc'
     });
     setSearchQuery('');
+    setMinDuration('');
+    setMaxDuration('');
     // Сбрасываем URL параметры
     const newParams = new URLSearchParams();
     setSearchParams(newParams);
@@ -281,12 +325,32 @@ export const Search: React.FC = () => {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    performSearch(1, searchQuery, searchFilters.category, searchFilters.tags, searchFilters.excludeTags, searchFilters.sortBy, searchFilters.sortOrder);
+    performSearch(
+      1, 
+      searchQuery, 
+      searchFilters.category, 
+      searchFilters.tags, 
+      searchFilters.excludeTags, 
+      searchFilters.sortBy, 
+      searchFilters.sortOrder,
+      minDuration || undefined, 
+      maxDuration || undefined
+    );
   };
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= stats.pages && page !== stats.currentPage) {
-      performSearch(page, searchQuery, searchFilters.category, searchFilters.tags, searchFilters.excludeTags, searchFilters.sortBy, searchFilters.sortOrder);
+      performSearch(
+        page, 
+        searchQuery, 
+        searchFilters.category, 
+        searchFilters.tags, 
+        searchFilters.excludeTags, 
+        searchFilters.sortBy, 
+        searchFilters.sortOrder,
+        minDuration || undefined, 
+        maxDuration || undefined
+      );
     }
   };
 
@@ -427,6 +491,35 @@ export const Search: React.FC = () => {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2">
+                  {t('common.minDuration')} ({t('common.second')})
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={minDuration}
+                  onChange={(e) => setMinDuration(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  placeholder={t('common.minDuration')}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2">
+                 {t('common.maxDuration')} ({t('common.second')})
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={maxDuration}
+                  onChange={(e) => setMaxDuration(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  placeholder={t('common.maxDuration')}
+                />
+              </div>
+
               {/* Sort Options */}
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-2">
@@ -440,6 +533,7 @@ export const Search: React.FC = () => {
                   <option value="date">{t('common.date')}</option>
                   <option value="name">{t('common.name')}</option>
                   <option value="size">{t('common.size')}</option>
+                  <option value="duration">{t('common.duration')}</option>
                 </select>
               </div>
 

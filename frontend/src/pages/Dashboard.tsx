@@ -391,6 +391,7 @@ export const Dashboard: React.FC = () => {
                 <option value="date">{t('file.sortByDate')}</option>
                 <option value="name">{t('file.sortByName')}</option>
                 <option value="size">{t('file.sortBySize')}</option>
+                <option value="duration">{t('file.sortByDuration')}</option>
               </select>
               
               <button

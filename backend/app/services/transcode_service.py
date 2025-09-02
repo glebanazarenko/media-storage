@@ -56,7 +56,7 @@ def _probe_audio_streams(file_path: str) -> bool:
         logger.warning(f"Error probing audio streams for {file_path}: {e}")
     return True
 
-def _can_copy_codec(input_path: str) -> tuple[bool, str, str]:
+def _can_copy_codec(input_path: str) -> tuple[bool, str, str, float]:
     """Проверяет, можно ли использовать copy codec"""
     try:
         probe = ffmpeg.probe(input_path)
@@ -65,18 +65,51 @@ def _can_copy_codec(input_path: str) -> tuple[bool, str, str]:
         
         video_codec = video_stream.get('codec_name', '') if video_stream else ''
         audio_codec = audio_stream.get('codec_name', '') if audio_stream else ''
+
+        duration = float(probe.get('format', {}).get('duration') or video_stream.get('duration') or 0)
         
         # Проверяем поддерживаемые кодеки для HLS
         supported_video = video_codec in ['h264', 'hevc']
         supported_audio = audio_codec in ['aac', 'mp3']
         
-        return supported_video and supported_audio, video_codec, audio_codec
+        return supported_video and supported_audio, video_codec, audio_codec, duration
     except Exception as e:
         logger.warning(f"Error checking copy codec capability: {e}")
         return False, '', ''
+    
+def _extract_video_metadata(file_path: str) -> dict:
+    """
+    Извлекает метаданные видео, включая длительность.
+    Возвращает словарь с метаданными или пустой словарь в случае ошибки.
+    """
+    metadata = {}
+    try:
+        probe = ffmpeg.probe(file_path)
+        # Ищем основной видео поток
+        video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+        if video_stream:
+            # Длительность может быть в общих метаданных или в метаданных потока
+            duration_str = probe.get('format', {}).get('duration') or video_stream.get('duration')
+            if duration_str:
+                metadata['duration'] = float(duration_str)
+            # Можно добавить и другие метаданные, если нужно
+            # width = video_stream.get('width')
+            # height = video_stream.get('height')
+            # codec = video_stream.get('codec_name')
+    except ffmpeg.Error as e:
+        logger.warning(f"Error probing video file {file_path}: {e}")
+    except Exception as e:
+         logger.error(f"Unexpected error extracting metadata for {file_path}: {e}")
+    return metadata
 
 def _get_all_renditions() -> List[Dict[str, Any]]:
     """Все рендитции: 360p, 480p, 720p, 1080p"""
+    # return [
+    #     {"name": "360p", "height": 360, "video_bitrate": "300k", "audio_bitrate": "48k"},
+    #     {"name": "480p", "height": 480, "video_bitrate": "600k", "audio_bitrate": "64k"},
+    #     {"name": "720p", "height": 720, "video_bitrate": "1500k", "audio_bitrate": "128k"},
+    #     {"name": "1080p", "height": 1080, "video_bitrate": "3000k", "audio_bitrate": "192k"}
+    # ]
     return [
         {"name": "360p", "height": 360, "video_bitrate": "300k", "audio_bitrate": "48k"}
     ]
@@ -279,7 +312,7 @@ def _transcode_video_task_internal(file_id: str):
             
             # Попытка copy transcode (самый быстрый способ)
             if USE_COPY_CODEC:
-                can_copy, video_codec, audio_codec = _can_copy_codec(original_local_path)
+                can_copy, video_codec, audio_codec, duration = _can_copy_codec(original_local_path)
                 logger.info(f"Copy codec capability: {can_copy}, Video: {video_codec}, Audio: {audio_codec}")
                 
                 if can_copy and _try_copy_transcode_all(original_local_path, output_dir, SEGMENT_DURATION, has_audio, renditions):
@@ -302,6 +335,8 @@ def _transcode_video_task_internal(file_id: str):
                 commands = _build_fast_hls_commands(
                     original_local_path, output_dir, renditions, SEGMENT_DURATION, has_audio
                 )
+
+                duration = _extract_video_metadata(original_local_path)
                 
                 if commands and not _run_ffmpeg_commands_fast(commands, timeout):
                     raise Exception("Fast HLS transcoding failed")
@@ -311,10 +346,11 @@ def _transcode_video_task_internal(file_id: str):
 
             base_s3_path = f"transcoded/{file_record.id}"
             _upload_to_s3_complete(os.path.join(temp_dir, "output", "hls"), base_s3_path, file_id)
-
+            
             logger.info(f"[Worker Thread] Setting transcoding status to 'completed' for file ID: {file_id}")
             file_record.hls_manifest_path = f"{base_s3_path}/hls/master.m3u8"
             file_record.transcoding_status = "completed"
+            file_record.duration = duration
             logger.info(f"[Worker Thread] Fast transcoding completed successfully for file {file_id}")
 
     except Exception as e:

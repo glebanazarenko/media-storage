@@ -286,20 +286,149 @@ export const Search: React.FC = () => {
     setSelectedFile(null);
   };
 
-  const handlePrevFile = () => {
+  const handlePrevFile = async () => {
     if (currentFileIndex > 0) {
+      // Navigate within the current page
       const newIndex = currentFileIndex - 1;
       setCurrentFileIndex(newIndex);
       setSelectedFile(files[newIndex]);
+    } else if (stats.currentPage > 1) {
+      // Current file is the first on the page, and there are previous pages
+      console.log("Loading previous page of search results for navigation...");
+      try {
+        // Формируем параметры, корректно обрабатывая пустые строки
+        const params: any = {
+          page: stats.currentPage - 1, // Load the *previous* page
+          limit: 20
+        };
+        if (searchQuery) params.query = searchQuery;
+        if (searchFilters.category) params.category = searchFilters.category;
+        if (searchFilters.tags && searchFilters.tags.length > 0) params.includeTags = searchFilters.tags.join(',');
+        if (searchFilters.excludeTags && searchFilters.excludeTags.length > 0) params.excludeTags = searchFilters.excludeTags.join(',');
+        if (searchFilters.sortBy) params.sortBy = searchFilters.sortBy;
+        if (searchFilters.sortOrder) params.sortOrder = searchFilters.sortOrder;
+        // Правильная проверка: только если значение определено и не пустая строка
+        if (minDuration !== undefined && minDuration !== '' && minDuration !== null) {
+          params.minDuration = Number(minDuration); // Убедимся, что это число
+        }
+        if (maxDuration !== undefined && maxDuration !== '' && maxDuration !== null) {
+          params.maxDuration = Number(maxDuration); // Убедимся, что это число
+        }
+
+        const response = await filesAPI.searchFiles(params);
+        const newTransformedFiles = response.data.files.map(transformFileData);
+
+        if (newTransformedFiles.length > 0) {
+          // Update state as performSearch does
+          setFiles(newTransformedFiles);
+          setStats({
+            total: response.data.total,
+            pages: Math.ceil(response.data.total / 20), // Recalculate if needed, or use response
+            currentPage: response.data.page
+          });
+          setPageInput(response.data.page.toString());
+          updateURLParams({
+            page: response.data.page,
+            query: searchQuery,
+            category: searchFilters.category,
+            tags: searchFilters.tags,
+            excludeTags: searchFilters.excludeTags,
+            sort: searchFilters.sortBy,
+            order: searchFilters.sortOrder,
+            // Обновляем URL параметры для длительности
+            minDuration: minDuration !== undefined && minDuration !== '' && minDuration !== null ? Number(minDuration) : undefined,
+            maxDuration: maxDuration !== undefined && maxDuration !== '' && maxDuration !== null ? Number(maxDuration) : undefined
+          });
+
+          // Now set the selected file to the *last* one on the newly loaded page
+          const lastFileIndex = newTransformedFiles.length - 1;
+          setCurrentFileIndex(lastFileIndex); // Index of the last file on the *new* page view context
+          setSelectedFile(newTransformedFiles[lastFileIndex]);
+        } else {
+            // Если по какой-то причине файлов нет, но страница существует
+            console.warn("No files found on the previous page, but page number is valid.");
+            // Можно оставить как есть или перейти на другую страницу
+        }
+
+      } catch (error) {
+        console.error("Error loading previous page for navigation:", error);
+        // Optionally, show an error message to the user
+      }
     }
+    // If on the first page and first file, do nothing (or optionally loop back to last)
   };
 
-  const handleNextFile = () => {
+  const handleNextFile = async () => { // Make it async
     if (currentFileIndex < files.length - 1) {
+      // Navigate within the current page
       const newIndex = currentFileIndex + 1;
       setCurrentFileIndex(newIndex);
       setSelectedFile(files[newIndex]);
+    } else if (stats.currentPage < stats.pages) {
+      // Current file is the last on the page, and there are more pages
+      console.log("Loading next page of search results for navigation...");
+      try {
+        // Re-call performSearch explicitly here to get the new page data within the function
+        const newPageNumber = stats.currentPage + 1;
+        // Формируем параметры, корректно обрабатывая пустые строки
+        const params: any = {
+          page: newPageNumber,
+          limit: 20
+        };
+        if (searchQuery) params.query = searchQuery;
+        if (searchFilters.category) params.category = searchFilters.category;
+        if (searchFilters.tags && searchFilters.tags.length > 0) params.includeTags = searchFilters.tags.join(',');
+        if (searchFilters.excludeTags && searchFilters.excludeTags.length > 0) params.excludeTags = searchFilters.excludeTags.join(',');
+        if (searchFilters.sortBy) params.sortBy = searchFilters.sortBy;
+        if (searchFilters.sortOrder) params.sortOrder = searchFilters.sortOrder;
+        // Правильная проверка: только если значение определено и не пустая строка
+        if (minDuration !== undefined && minDuration !== '' && minDuration !== null) {
+          params.minDuration = Number(minDuration); // Убедимся, что это число
+        }
+        if (maxDuration !== undefined && maxDuration !== '' && maxDuration !== null) {
+          params.maxDuration = Number(maxDuration); // Убедимся, что это число
+        }
+
+        const response = await filesAPI.searchFiles(params);
+        const newTransformedFiles = response.data.files.map(transformFileData);
+
+        if (newTransformedFiles.length > 0) {
+          // Update state as performSearch does
+          setFiles(newTransformedFiles);
+          setStats({
+            total: response.data.total,
+            pages: Math.ceil(response.data.total / 20), // Recalculate if needed, or use response
+            currentPage: response.data.page
+          });
+          setPageInput(response.data.page.toString());
+          updateURLParams({
+            page: response.data.page,
+            query: searchQuery,
+            category: searchFilters.category,
+            tags: searchFilters.tags,
+            excludeTags: searchFilters.excludeTags,
+            sort: searchFilters.sortBy,
+            order: searchFilters.sortOrder,
+            // Обновляем URL параметры для длительности
+            minDuration: minDuration !== undefined && minDuration !== '' && minDuration !== null ? Number(minDuration) : undefined,
+            maxDuration: maxDuration !== undefined && maxDuration !== '' && maxDuration !== null ? Number(maxDuration) : undefined
+          });
+
+          // Now set the selected file to the first one on the newly loaded page
+          setCurrentFileIndex(0); // Index 0 of the *new* page view context
+          setSelectedFile(newTransformedFiles[0]);
+        } else {
+            // Если по какой-то причине файлов нет, но страница существует
+            console.warn("No files found on the next page, but page number is valid.");
+            // Можно оставить как есть или перейти на другую страницу
+        }
+
+      } catch (error) {
+        console.error("Error loading next page for navigation:", error);
+        // Optionally, show an error message to the user
+      }
     }
+    // If on the last page and last file, do nothing (or optionally loop back to first)
   };
 
   const handleFileEdit = (file: FileItem) => {
@@ -627,8 +756,8 @@ export const Search: React.FC = () => {
             onClose={handleCloseViewer}
             onPrev={handlePrevFile}
             onNext={handleNextFile}
-            hasPrev={currentFileIndex > 0}
-            hasNext={currentFileIndex < files.length - 1}
+            hasPrev={currentFileIndex > 0 || stats.currentPage > 1} // Обновлено
+            hasNext={currentFileIndex < files.length - 1 || stats.currentPage < stats.pages} // Обновлено
           />
         )}
       </div>

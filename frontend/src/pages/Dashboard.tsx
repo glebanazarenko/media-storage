@@ -217,20 +217,162 @@ export const Dashboard: React.FC = () => {
     setSelectedFile(null);
   };
 
-  const handlePrevFile = () => {
+  const handlePrevFile = async () => {
     if (currentFileIndex > 0) {
+      // Navigate within the current page
       const newIndex = currentFileIndex - 1;
       setCurrentFileIndex(newIndex);
       setSelectedFile(files[newIndex]);
+    } else if (stats.currentPage > 1) {
+      // Current file is the first on the page, and there are previous pages
+      console.log("Loading previous page of files for navigation...");
+      try {
+        const params = {
+          category: searchFilters.category,
+          sortBy: searchFilters.sortBy,
+          sortOrder: searchFilters.sortOrder,
+          page: stats.currentPage - 1, // Load the *previous* page
+          limit: 20
+        };
+
+        const response = await filesAPI.getFiles(params);
+        if (response.data && response.data.files) {
+          const newTransformedFiles = response.data.files.map((file: any) => {
+             const tagsWithNames = file.tags.map((tagId: string, index: number) => ({
+               id: tagId,
+               name: file.tags_name[index] || tagId
+             }));
+
+             const thumbnailUrl = file.thumbnail_path 
+               ? `${API_BASE_URL}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
+               : null;
+             const previewUrl = file.preview_path 
+               ? `${API_BASE_URL}/files/thumbnail/${file.preview_path.replace('uploads/', '')}`
+               : null;
+
+             return {
+               id: file.id,
+               filename: file.original_name,
+               file_path: file.file_path,
+               mime_type: file.mime_type,
+               file_size: file.size,
+               category: file.category_id,
+               category_name: file.category_name,
+               description: file.description,
+               tags: tagsWithNames,
+               created_at: file.created_at,
+               updated_at: file.updated_at,
+               thumbnail_url: thumbnailUrl,
+               preview_url: previewUrl,
+               owner_id: file.owner_id,
+               transcoding_status: file.transcoding_status ?? null,
+               hls_manifest_path: file.hls_manifest_path ?? null,
+               dash_manifest_path: file.dash_manifest_path ?? null,
+             };
+          });
+
+          if (newTransformedFiles.length > 0) {
+            // Update state with the new page data
+            setFiles(newTransformedFiles);
+            setStats(prevStats => ({
+               ...prevStats,
+               currentPage: response.data.page // Update current page in state immediately
+            }));
+            setPageInput(response.data.page.toString());
+            // Update URL
+            updateURLParams({ page: response.data.page });
+
+            // Now set the selected file to the *last* one on the newly loaded page
+            const lastFileIndex = newTransformedFiles.length - 1;
+            setCurrentFileIndex(lastFileIndex); // Index of the last file on the *new* page view context
+            setSelectedFile(newTransformedFiles[lastFileIndex]);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading previous page for navigation:", error);
+        // Optionally, show an error message to the user
+      }
     }
+    // If on the first page and first file, do nothing (or optionally loop back to last)
   };
 
-  const handleNextFile = () => {
+  const handleNextFile = async () => { // Make it async
     if (currentFileIndex < files.length - 1) {
+      // Navigate within the current page
       const newIndex = currentFileIndex + 1;
       setCurrentFileIndex(newIndex);
       setSelectedFile(files[newIndex]);
+    } else if (stats.currentPage < stats.pages) {
+      // Current file is the last on the page, and there are more pages
+      console.log("Loading next page of files for navigation...");
+      try {
+        // Re-fetch the data for the next page to ensure state is current
+        const params = {
+          category: searchFilters.category,
+          sortBy: searchFilters.sortBy,
+          sortOrder: searchFilters.sortOrder,
+          page: stats.currentPage + 1, // We want the *next* page data
+          limit: 20
+        };
+
+        const response = await filesAPI.getFiles(params);
+        if (response.data && response.data.files) {
+          const newTransformedFiles = response.data.files.map((file: any) => {
+             const tagsWithNames = file.tags.map((tagId: string, index: number) => ({
+               id: tagId,
+               name: file.tags_name[index] || tagId
+             }));
+
+             const thumbnailUrl = file.thumbnail_path 
+               ? `${API_BASE_URL}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
+               : null;
+             const previewUrl = file.preview_path 
+               ? `${API_BASE_URL}/files/thumbnail/${file.preview_path.replace('uploads/', '')}`
+               : null;
+
+             return {
+               id: file.id,
+               filename: file.original_name,
+               file_path: file.file_path,
+               mime_type: file.mime_type,
+               file_size: file.size,
+               category: file.category_id,
+               category_name: file.category_name,
+               description: file.description,
+               tags: tagsWithNames,
+               created_at: file.created_at,
+               updated_at: file.updated_at,
+               thumbnail_url: thumbnailUrl,
+               preview_url: previewUrl,
+               owner_id: file.owner_id,
+               transcoding_status: file.transcoding_status ?? null,
+               hls_manifest_path: file.hls_manifest_path ?? null,
+               dash_manifest_path: file.dash_manifest_path ?? null,
+             };
+          });
+
+          if (newTransformedFiles.length > 0) {
+            // Update state with the new page data
+            setFiles(newTransformedFiles);
+            setStats(prevStats => ({
+               ...prevStats,
+               currentPage: response.data.page // Update current page in state immediately
+            }));
+            setPageInput(response.data.page.toString());
+            // Update URL
+            updateURLParams({ page: response.data.page });
+
+            // Now set the selected file to the first one on the newly loaded page
+            setCurrentFileIndex(0); // Index 0 of the *new* page view context
+            setSelectedFile(newTransformedFiles[0]);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading next page for navigation:", error);
+        // Optionally, show an error message to the user
+      }
     }
+    // If on the last page and last file, do nothing (or optionally loop back to first)
   };
 
   const handleFileEdit = (file: FileItem) => {
@@ -430,8 +572,8 @@ export const Dashboard: React.FC = () => {
             onClose={handleCloseViewer}
             onPrev={handlePrevFile}
             onNext={handleNextFile}
-            hasPrev={currentFileIndex > 0}
-            hasNext={currentFileIndex < files.length - 1}
+            hasPrev={currentFileIndex > 0 || stats.currentPage > 1} // Обновлено
+            hasNext={currentFileIndex < files.length - 1 || stats.currentPage < stats.pages} // Обновлено
           />
         )}
       </div>

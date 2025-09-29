@@ -592,13 +592,13 @@ const AddFilesToCollectionModal: React.FC<AddFilesToCollectionModalProps> = ({ c
         const searchParams = {
             query: searchQuery.trim() || undefined, // undefined, если пустая строка
             includeTags: searchTag.trim() || undefined, // undefined, если пустая строка
-            limit: 100, // Ограничиваем количество результатов
+            limit: 1000, // Ограничиваем количество результатов
             // sortBy: 'date', // Пример сортировки
             // sortOrder: 'desc',
         };
 
         // Сначала получаем файлы, принадлежащие коллекции (ограничиваем лимит)
-        const collectionFilesResponse = await groupsAPI.getGroupFiles(collectionId, { limit: 100 }); // Исправлено: <= 100
+        const collectionFilesResponse = await groupsAPI.getGroupFiles(collectionId, { limit: 1000 }); // Исправлено: <= 1000
         const collectionFileIds = new Set(collectionFilesResponse.data.files.map((f: any) => f.id));
 
         let allMatchingFiles: FileItem[] = [];

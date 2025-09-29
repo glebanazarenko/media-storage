@@ -106,7 +106,7 @@ def list_group_files(
     sort_by: str = Query("date", alias="sortBy"),
     sort_order: str = Query("desc", alias="sortOrder"),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, le=100),
+    limit: int = Query(20, le=1000),
     current_user: User = Depends(get_current_user),
 ):
     """Получение списка файлов в группе (если пользователь имеет к ней доступ)."""

@@ -55,7 +55,7 @@ def list_files(
     sort_by: str = Query("date", alias="sortBy"),
     sort_order: str = Query("desc", alias="sortOrder"),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, le=100),
+    limit: int = Query(20, le=1000),
     current_user: User = Depends(get_current_user),
 ):
     return get_files_list(
@@ -261,7 +261,7 @@ def search_files_endpoint(
     sort_by: str = Query("date", alias="sortBy"),
     sort_order: str = Query("desc", alias="sortOrder"),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, le=100),
+    limit: int = Query(20, le=1000),
     current_user: User = Depends(get_current_user),
 ):
     """Поиск файлов по запросу, категориям, тегам и другим параметрам."""

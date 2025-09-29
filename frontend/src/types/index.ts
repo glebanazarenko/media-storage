@@ -92,3 +92,27 @@ export interface PaginatedResponse<T> {
   pages: number;
   limit: number;
 }
+
+// Интерфейс для члена группы
+export interface GroupMember {
+  user_id: string;
+  group_id: string;
+  role: 'reader' | 'editor' | 'admin';
+  invited_by?: string;
+  invited_at: string; // ISO string
+  accepted_at?: string; // ISO string
+  revoked_at?: string; // ISO string
+}
+
+// Интерфейс для группы (соответствует GroupResponse бэкенда)
+export interface Group {
+  id: string;
+  name: string;
+  description?: string;
+  creator_id: string; // ID пользователя-создателя
+  access_level: string; // reader, editor, admin (или просто admin для создателя)
+  created_at: string; // ISO string
+  updated_at: string; // ISO string
+  // file_count и members не возвращаются в GroupResponse, нужно получать отдельно
+  // thumbnail_url не возвращается, нужно генерировать или получать из файла
+}

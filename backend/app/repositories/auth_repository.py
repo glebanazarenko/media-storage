@@ -18,3 +18,8 @@ def create_user(user_data: UserCreate) -> User:
         db.commit()
         db.refresh(new_user)
         return new_user
+
+def get_all_users() -> list[User]:
+    with get_db_session() as db:
+        users = db.query(User).all() # Получаем всех пользователей
+        return users

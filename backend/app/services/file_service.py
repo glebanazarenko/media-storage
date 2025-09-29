@@ -24,6 +24,7 @@ from app.repositories.s3_repository import upload_file_to_s3
 from app.repositories.tag_repository import get_or_create_tags, get_tag_names_by_ids
 from app.schemas.file_schemas import FileCreate, FileResponse
 from app.services.s3_service import create_thumbnail_from_s3
+from app.services.group_service import _check_user_can_read_file, _check_user_can_edit_file_in_group
 import requests
 import tempfile
 import os
@@ -89,10 +90,15 @@ def save_file_metadata(
     return FileResponse.model_validate(file_record)
 
 
-def get_file_service(file_id: str):
+def get_file_service(file_id: str, user_id: str): # Добавлен user_id
     file = get_file_by_id(file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
+    # Проверка доступа
+    # Создаем временного пользователя для передачи в проверку
+    temp_user = User(id=user_id) # Это временный объект, используемый только для проверки
+    if not _check_user_can_read_file(file, temp_user):
+        raise HTTPException(status_code=403, detail="Access denied to file")
     file = FileMetadataService.enrich_file_metadata(file)
     return file
 
@@ -144,7 +150,7 @@ def search_files_service(
     sort_column = SORT_FIELD_MAP.get(sort_by, "created_at")
 
     files, total = search_files(
-        query=query,
+        query_str=query,
         category=category,
         include_tags=include_tags,
         exclude_tags=exclude_tags,
@@ -175,22 +181,30 @@ def update_file_metadata(
     category: str,
     user_id: str,
 ):
-    """Обновление метаданных файла"""
+    """Обновление метаданных файла с проверкой доступа"""
+    # Создаем временного пользователя для передачи в проверку
+    temp_user = User(id=user_id) # Это временный объект, используемый только для проверки
+    file = get_file_by_id(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not _check_user_can_edit_file_in_group(file, temp_user):
+        raise HTTPException(status_code=403, detail="Access denied to edit file")
+    # Остальная логика обновления
     db_file = update_file(file_id, description, tag_names, category, user_id)
     db_file = FileMetadataService.enrich_file_metadata(db_file)
     return db_file
 
 
 def delete_file_service(file_id: str, user_id: str) -> dict:
-    """Сервис удаления файла"""
+    """Сервис удаления файла с проверкой доступа"""
     try:
-        # Получаем файл для проверки прав доступа
+        # Создаем временного пользователя для передачи в проверку
+        temp_user = User(id=user_id) # Это временный объект, используемый только для проверки
         file = get_file_by_id(file_id)
         if not file:
             raise HTTPException(status_code=404, detail="File not found")
-        if file.owner_id != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-
+        if not _check_user_can_edit_file_in_group(file, temp_user):
+            raise HTTPException(status_code=403, detail="Access denied to delete file")
         # Удаляем файлы из S3
         FileStorageService.delete_file_from_s3(file)
 
@@ -203,17 +217,18 @@ def delete_file_service(file_id: str, user_id: str) -> dict:
 
 
 def stream_file_service(file_id: str, range_header: str, user_id: str) -> dict:
-    """Сервис стриминга файла"""
+    """Сервис стриминга файла с проверкой доступа"""
     try:
-        # Получаем метаданные файла
+        # Создаем временного пользователя для передачи в проверку
+        temp_user = User(id=user_id) # Это временный объект, используемый только для проверки
         file = get_file_by_id(file_id)
         if not file:
             raise HTTPException(status_code=404, detail="File not found")
-
-        # Проверяем права доступа
-        if file.owner_id != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-
+        if not _check_user_can_read_file(file, temp_user):
+            raise HTTPException(status_code=403, detail="Access denied to file")
+        # Остальная логика стриминга (как была)
+        # ... (весь остальной код функции без изменения проверки file.owner_id != user_id)
+        # Убираем эту строку: if file.owner_id != user_id: raise HTTPException...
         # Получаем размер файла из S3
         try:
             file_head = s3_client.head_object(
@@ -253,16 +268,15 @@ def stream_file_service(file_id: str, range_header: str, user_id: str) -> dict:
 
         if s3_range:
             s3_params["Range"] = s3_range
+
         s3_response = s3_client.get_object(**s3_params)
-        
-        # Определяем MIME-type
+
         mime_type = (
             file.mime_type
             or s3_response.get("ContentType")
             or "application/octet-stream"
         )
-        
-        # Правильно кодируем имя файла для заголовка
+
         safe_filename = quote(file.original_name.encode("utf-8"))
         content_disposition = f"inline; filename*=UTF-8''{safe_filename}"
 
@@ -277,14 +291,14 @@ def stream_file_service(file_id: str, range_header: str, user_id: str) -> dict:
         )
 
         return {
-            "s3_response": s3_response, # Это объект ответа от S3 с Body
+            "s3_response": s3_response,
             "file": file,
             "start": start,
             "end": end,
             "status_code": status_code,
             "headers": headers,
             "file_size": file_size,
-            "mime_type": mime_type, # Добавляем mime_type в возвращаемый словарь
+            "mime_type": mime_type,
         }
 
     except ClientError as e:
@@ -299,25 +313,25 @@ def stream_file_service(file_id: str, range_header: str, user_id: str) -> dict:
 
 
 def download_file_service(file_id: str, user_id: str) -> dict:
-    """Сервис скачивания файла"""
+    """Сервис скачивания файла с проверкой доступа"""
     try:
-        # Получаем файл для проверки прав доступа
+        # Создаем временного пользователя для передачи в проверку
+        temp_user = User(id=user_id) # Это временный объект, используемый только для проверки
         file = get_file_by_id(file_id)
         if not file:
             raise HTTPException(status_code=404, detail="File not found")
-        if file.owner_id != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-
-        # Получаем файл из S3
+        if not _check_user_can_read_file(file, temp_user):
+            raise HTTPException(status_code=403, detail="Access denied to file")
+        # Остальная логика скачивания (как была)
+        # ... (весь остальной код функции без изменения проверки file.owner_id != user_id)
+        # Убираем эту строку: if file.owner_id != user_id: raise HTTPException...
         try:
             s3_response = s3_client.get_object(
                 Bucket=settings.AWS_S3_BUCKET_NAME, Key=file.file_path
             )
-
             return {"s3_response": s3_response, "file": file}
         except ClientError as e:
             raise HTTPException(status_code=404, detail="File not found in storage")
-
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     

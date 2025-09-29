@@ -8,6 +8,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Upload } from './pages/Upload';
 import { Search } from './pages/Search';
 import { Collections } from './pages/Collections';
+import { CollectionDetail } from './pages/CollectionDetail'; // Импортируем CollectionDetail
 import { Settings } from './pages/Settings';
 import './i18n';
 
@@ -110,6 +111,15 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <Collections />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Добавляем маршрут для CollectionDetail */}
+              <Route
+                path="/collections/:groupId"
+                element={
+                  <ProtectedRoute>
+                    <CollectionDetail />
                   </ProtectedRoute>
                 }
               />

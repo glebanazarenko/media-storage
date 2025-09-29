@@ -152,28 +152,46 @@ export const tagsAPI = {
     api.get('/tags/popular', { params: { limit } }),
 };
 
-// Collections endpoints
-export const collectionsAPI = {
-  getCollections: () => 
-    api.get('/collections/'),
+// Groups endpoints
+export const groupsAPI = {
+  getGroups: () => 
+    api.get('/groups/'), // Возвращает список GroupResponse
   
-  getCollection: (collectionId: string) => 
-    api.get(`/collections/${collectionId}`),
+  getGroup: (groupId: string) => 
+    api.get(`/groups/${groupId}`), // Возвращает GroupResponse
   
-  createCollection: (data: { name: string; description?: string; is_private?: boolean }) => 
-    api.post('/collections/', data),
+  createGroup: (data: { name: string; description?: string }) => 
+    api.post('/groups/', data), // Принимает GroupCreate
   
-  updateCollection: (collectionId: string, data: any) => 
-    api.patch(`/collections/${collectionId}`, data),
+  updateGroup: (groupId: string, data: { name?: string; description?: string }) => 
+    api.put(`/groups/${groupId}`, data), // Принимает GroupUpdate
   
-  deleteCollection: (collectionId: string) => 
-    api.delete(`/collections/${collectionId}`),
+  deleteGroup: (groupId: string) => 
+    api.delete(`/groups/${groupId}`),
   
-  addFileToCollection: (collectionId: string, fileId: string) => 
-    api.post(`/collections/${collectionId}/files/${fileId}`),
+  // Invite member (requires user ID)
+  inviteMember: (groupId: string, data: { user_id: string; role: string }) => // role: 'reader', 'editor', 'admin'
+    api.post(`/groups/${groupId}/members`, data),
   
-  removeFileFromCollection: (collectionId: string, fileId: string) => 
-    api.delete(`/collections/${collectionId}/files/${fileId}`),
+  // Remove member
+  removeMember: (groupId: string, userId: string) => 
+    api.delete(`/groups/${groupId}/members/${userId}`),
+  
+  // Update member role
+  updateMemberRole: (groupId: string, userId: string, data: { role: string }) => // role: 'reader', 'editor', 'admin'
+    api.put(`/groups/${groupId}/members/${userId}/role`, data),
+  
+  // Get files in a group
+  getGroupFiles: (groupId: string, params?: { sortBy?: string; sortOrder?: 'asc' | 'desc'; page?: number; limit?: number }) => 
+    api.get<{ files: any[]; total: number; page: number; limit: number }>(`/groups/${groupId}/files`, { params }), // params как в /files/
+  
+  // Add file to group
+  addFileToGroup: (groupId: string, fileId: string) => // Принимает объект { file_id: string }
+    api.post(`/groups/${groupId}/files`, { file_id: fileId }),
+  
+  // Remove file from group
+  removeFileFromGroup: (groupId: string, fileId: string) => 
+    api.delete(`/groups/${groupId}/files/${fileId}`),
 };
 
 // User endpoints

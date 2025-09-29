@@ -11,6 +11,7 @@ from app.routers import (
     file_router,
     group_router,
     tag_router,
+    user_router
 )
 
 # Глобальная настройка логирования
@@ -40,6 +41,7 @@ app.include_router(file_router.router)
 app.include_router(group_router.router)
 app.include_router(tag_router.router)
 app.include_router(backup_router.router)
+app.include_router(user_router.router)
 
 
 if __name__ == "__main__":

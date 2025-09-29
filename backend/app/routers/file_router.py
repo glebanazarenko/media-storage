@@ -73,19 +73,18 @@ def stream_file(
     file_id: str,
     request: Request,
     range_header: str = Header(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user), # Получаем текущего пользователя
 ):
     try:
-        # Вызываем сервис стриминга
+        # Вызываем сервис стриминга с user_id
         stream_data = stream_file_service(file_id, range_header, current_user.id)
+        # ... (остальной код как есть, но без проверки file.owner_id != current_user.id внутри)
         s3_response = stream_data["s3_response"]
-        # file = stream_data["file"] # Не используется напрямую здесь
         start = stream_data["start"]
         end = stream_data["end"]
         status_code = stream_data["status_code"]
         headers = stream_data["headers"]
-        # file_size = stream_data["file_size"] # Не используется напрямую здесь
-        # mime_type = stream_data["mime_type"] # Не используется напрямую здесь
+        mime_type = stream_data["mime_type"]
 
         # --- ИСПРАВЛЕНИЕ НАЧАЛО ---
         # Вычисляем content_length заранее, вне блока try генератора
@@ -97,8 +96,7 @@ def stream_file(
             bytes_read = 0
             # Используем calculated_content_length из внешней области видимости
             content_length = calculated_content_length
-            chunk_size = 64 * 1024 # 64KB chunks
-            
+            chunk_size = 64 * 1024
             try:
                 # Читаем из S3 по частям и сразу отдаем клиенту
                 while bytes_read < content_length:
@@ -118,33 +116,15 @@ def stream_file(
                     yield chunk
             except Exception as e:
                 print(f"Error during streaming chunk: {e}")
-                # Можно логировать ошибку, но повторно выбрасывать её внутри генератора
-                # может быть сложно обработать корректно в контексте StreamingResponse.
-                # Лучше позволить генератору завершиться.
-                # Однако, если клиент отключился, это нормально.
-                # FastAPI/Uvicorn должны обработать это.
-                # Просто завершаем генератор.
-                # yield b"" # Не обязательно
-                return # Завершаем генератор
+                return
             finally:
                 # Всегда закрываем поток из S3
                 try:
                     s3_response["Body"].close()
                 except Exception as e:
                     print(f"Error closing S3 stream: {e}")
-                    # Игнорируем ошибки закрытия
                     pass
-        
-        # Получаем mime_type после обработки ошибок сервиса, но до создания генератора
-        # на случай, если сервис бросит исключение.
-        mime_type = (
-            stream_data["file"].mime_type # Получаем из файла, полученного сервисом
-            or s3_response.get("ContentType")
-            or "application/octet-stream"
-        )
-        # --- ИСПРАВЛЕНИЕ КОНЕЦ ---
 
-        # Правильно кодируем имя файла для заголовка
         safe_filename = quote(stream_data["file"].original_name.encode("utf-8"))
         content_disposition = f"inline; filename*=UTF-8''{safe_filename}"
 
@@ -153,14 +133,14 @@ def stream_file(
         headers.update(
             {
                 "Content-Disposition": content_disposition,
-                "Content-Length": str(calculated_content_length), # Используем заранее вычисленное значение
+                "Content-Length": str(calculated_content_length),
                 "Accept-Ranges": "bytes",
                 "Cache-Control": "public, max-age=3600",
             }
         )
 
         return StreamingResponse(
-            iter_file(), # Передаем генератор
+            iter_file(),
             status_code=status_code,
             media_type=mime_type,
             headers=headers,
@@ -308,16 +288,17 @@ def update_file(
     description: Optional[str] = Form(None),
     tag_names: str = Form(""),
     category: str = Form("0-plus"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user), # Получаем текущего пользователя
 ):
-    """Обновление метаданных файла"""
+    """Обновление метаданных файла с проверкой доступа"""
     try:
+        # Передаем user_id в сервис
         updated_file = update_file_metadata(
             file_id=file_id,
             description=description,
             tag_names=tag_names,
             category=category,
-            user_id=current_user.id,
+            user_id=current_user.id, # Передаем user_id
         )
         return FileResponse.model_validate(updated_file)
     except Exception as e:
@@ -327,11 +308,12 @@ def update_file(
 @router.delete("/{file_id}")
 def delete_file(
     file_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user), # Получаем текущего пользователя
 ):
-    """Удаление файла"""
+    """Удаление файла с проверкой доступа"""
     try:
-        result = delete_file_service(file_id, current_user.id)
+        # Передаем user_id в сервис
+        result = delete_file_service(file_id, current_user.id) # Передаем user_id
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -340,17 +322,15 @@ def delete_file(
 @router.get("/{file_id}/download")
 def download_file(
     file_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user), # Получаем текущего пользователя
 ):
-    """Скачивание оригинального файла"""
+    """Скачивание оригинального файла с проверкой доступа"""
     try:
-        # Вызываем сервис скачивания
-        download_data = download_file_service(file_id, current_user.id)
-
+        # Вызываем сервис скачивания с user_id
+        download_data = download_file_service(file_id, current_user.id) # Передаем user_id
         s3_response = download_data["s3_response"]
         file = download_data["file"]
 
-        # Заголовки для скачивания файла
         safe_filename = quote(file.original_name.encode("utf-8"))
 
         headers = {
@@ -390,6 +370,10 @@ def download_file_from_url(
 
 
 @router.get("/{file_id}", response_model=FileResponse)
-def get_file(file_id: str):
-    file = get_file_service(file_id)
+def get_file(
+    file_id: str,
+    current_user: User = Depends(get_current_user), # Получаем текущего пользователя
+):
+    # Передаем user_id в сервис
+    file = get_file_service(file_id, current_user.id)
     return FileResponse.model_validate(file)

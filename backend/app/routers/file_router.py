@@ -1,6 +1,7 @@
 from typing import Optional
 import mimetypes
 from urllib.parse import quote
+from uuid import UUID
 
 from botocore.exceptions import ClientError
 from fastapi import (
@@ -44,9 +45,16 @@ def create_file(
     description: Optional[str] = Form(None),
     tag_names: str = Form(""),
     category: str = Form("0-plus"),
+    group_id: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
 ):
-    return save_file_metadata(file, description, tag_names, category, current_user)
+    group_uuid = None
+    if group_id:
+        try:
+            group_uuid = UUID(group_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid group ID format")
+    return save_file_metadata(file, description, tag_names, category, current_user, group_uuid)
 
 
 @router.get("/", response_model=FileListResponse)

@@ -4,6 +4,10 @@ import { initReactI18next } from 'react-i18next';
 const resources = {
   en: {
     translation: {
+      'Admin': 'Admin',
+      'Editer': 'Editer',
+      'Reader': 'Reader',
+
       // Navigation
       'nav.dashboard': 'Dashboard',
       'nav.upload': 'Upload',
@@ -224,10 +228,58 @@ const resources = {
       'common.minDuration': 'Min duration',
       'common.maxDuration': 'Max duration',
       'common.noDescriptionOrTags': 'No description or tags',
+
+      // Collection specific translations
+      'file.collection': 'Collection', // Для выбора коллекции при загрузке
+      'file.noCollection': 'No Collection', // Для выбора коллекции при загрузке
+      'file.selectCollectionHint': 'Choose a collection to add this file to.', // Для выбора коллекции при загрузке
+      'file.fetchCollectionsFailed': 'Failed to load collections.', // Для выбора коллекции при загрузке
+      'file.addFiles': 'Add Files', // Для кнопки в деталях коллекции
+      'file.manageMembers': 'Manage Members', // Для кнопки в деталях коллекции
+      'file.inviteMember': 'Invite Member', // Для модального окна участников
+      'file.selectUser': 'Select User', // Для модального окна участников
+      'file.roleReader': 'Reader', // Для модального окна участников
+      'file.roleEditor': 'Editor', // Для модального окна участников
+      'file.roleAdmin': 'Admin', // Для модального окна участников
+      'file.invite': 'Invite', // Для модального окна участников
+      'file.loading': 'Loading...', // Для модального окна участников
+      'file.userNotFound': 'User not found.', // Для модального окна участников
+      'file.failedToInvite': 'Failed to invite member.', // Для модального окна участников
+      'file.cannotRemoveCreator': 'Cannot remove the group creator.', // Для модального окна участников
+      'file.confirmRemoveMember': 'Are you sure you want to remove this member?', // Для модального окна участников
+      'file.failedToRemove': 'Failed to remove member.', // Для модального окна участников
+      'file.cannotChangeCreatorRole': 'Cannot change the group creator\'s role.', // Для модального окна участников
+      'file.failedToUpdateRole': 'Failed to update member role.', // Для модального окна участников
+      'file.membersList': 'Members List', // Для модального окна участников
+      'file.creator': 'Creator', // Для модального окна участников
+      'file.goBack': 'Go Back', // Для страницы деталей коллекции
+      'file.collectionNotFound': 'Collection not found.', // Для страницы деталей коллекции
+      'file.searchByName': 'Search by Name', // Для модального окна добавления файлов
+      'file.searchFilesByName': 'Enter file name...', // Для модального окна добавления файлов
+      'file.searchByTag': 'Search by Tag', // Для модального окна добавления файлов
+      'file.searchFilesByTag': 'Enter tag name...', // Для модального окна добавления файлов
+      'file.search': 'Search', // Для модального окна добавления файлов
+      'file.addAllByTag': 'Add All by Tag', // Для модального окна добавления файлов
+      'file.selectedCount': 'Selected: {{count}}', // Для модального окна добавления файлов
+      'file.addSelected': 'Add Selected', // Для модального окна добавления файлов
+      'file.failedToAddFiles': 'Failed to add files.', // Для модального окна добавления файлов
+      'file.enterCollectionName': 'Enter collection name:', // Для создания коллекции
+      'file.confirmDeleteCollection': 'Are you sure you want to delete collection "{{name}}"?', // Для удаления коллекции
+      'file.failedToCreate': 'Failed to create collection.', // Для создания коллекции
+      'file.failedToDelete': 'Failed to delete collection.', // Для удаления коллекции
+      'file.enterNewName': 'Enter new name:', // Для редактирования коллекции
+      'file.unexpectedApiResponse': 'Unexpected API response.', // Для обработки ошибок
+      'file.retry': 'Retry', // Для обработки ошибок
+      'file.unexpectedData': 'Unexpected data received.', // Для обработки ошибок
+      'file.back': 'Back',
     }
   },
   ru: {
     translation: {
+      'Admin': 'Админ',
+      'Editer': 'Редактор',
+      'Reader': 'Читатель',
+
       // Navigation
       'nav.dashboard': 'Главная',
       'nav.upload': 'Загрузить',
@@ -448,6 +500,50 @@ const resources = {
       'common.minDuration': 'Мин длительность',
       'common.maxDuration': 'Макс длительность',
       'common.noDescriptionOrTags': 'Нет описания или тегов',
+
+      // Collection specific translations
+      'file.collection': 'Коллекция', // Для выбора коллекции при загрузке
+      'file.noCollection': 'Без коллекции', // Для выбора коллекции при загрузке
+      'file.selectCollectionHint': 'Выберите коллекцию, в которую нужно добавить этот файл.', // Для выбора коллекции при загрузке
+      'file.fetchCollectionsFailed': 'Не удалось загрузить коллекции.', // Для выбора коллекции при загрузке
+      'file.addFiles': 'Добавить файлы', // Для кнопки в деталях коллекции
+      'file.manageMembers': 'Управление участниками', // Для кнопки в деталях коллекции
+      'file.inviteMember': 'Пригласить участника', // Для модального окна участников
+      'file.selectUser': 'Выбрать пользователя', // Для модального окна участников
+      'file.roleReader': 'Читатель', // Для модального окна участников
+      'file.roleEditor': 'Редактор', // Для модального окна участников
+      'file.roleAdmin': 'Администратор', // Для модального окна участников
+      'file.invite': 'Пригласить', // Для модального окна участников
+      'file.loading': 'Загрузка...', // Для модального окна участников
+      'file.userNotFound': 'Пользователь не найден.', // Для модального окна участников
+      'file.failedToInvite': 'Не удалось пригласить участника.', // Для модального окна участников
+      'file.cannotRemoveCreator': 'Невозможно удалить создателя группы.', // Для модального окна участников
+      'file.confirmRemoveMember': 'Вы уверены, что хотите удалить этого участника?', // Для модального окна участников
+      'file.failedToRemove': 'Не удалось удалить участника.', // Для модального окна участников
+      'file.cannotChangeCreatorRole': 'Невозможно изменить роль создателя группы.', // Для модального окна участников
+      'file.failedToUpdateRole': 'Не удалось обновить роль участника.', // Для модального окна участников
+      'file.membersList': 'Список участников', // Для модального окна участников
+      'file.creator': 'Создатель', // Для модального окна участников
+      'file.goBack': 'Назад', // Для страницы деталей коллекции
+      'file.collectionNotFound': 'Коллекция не найдена.', // Для страницы деталей коллекции
+      'file.searchByName': 'Поиск по названию', // Для модального окна добавления файлов
+      'file.searchFilesByName': 'Введите название файла...', // Для модального окна добавления файлов
+      'file.searchByTag': 'Поиск по тегу', // Для модального окна добавления файлов
+      'file.searchFilesByTag': 'Введите название тега...', // Для модального окна добавления файлов
+      'file.search': 'Поиск', // Для модального окна добавления файлов
+      'file.addAllByTag': 'Добавить все по тегу', // Для модального окна добавления файлов
+      'file.selectedCount': 'Выбрано: {{count}}', // Для модального окна добавления файлов
+      'file.addSelected': 'Добавить выбранные', // Для модального окна добавления файлов
+      'file.failedToAddFiles': 'Не удалось добавить файлы.', // Для модального окна добавления файлов
+      'file.enterCollectionName': 'Введите название коллекции:', // Для создания коллекции
+      'file.confirmDeleteCollection': 'Вы уверены, что хотите удалить коллекцию "{{name}}"?', // Для удаления коллекции
+      'file.failedToCreate': 'Не удалось создать коллекцию.', // Для создания коллекции
+      'file.failedToDelete': 'Не удалось удалить коллекцию.', // Для удаления коллекции
+      'file.enterNewName': 'Введите новое название:', // Для редактирования коллекции
+      'file.unexpectedApiResponse': 'Неожиданный ответ от API.', // Для обработки ошибок
+      'file.retry': 'Повторить', // Для обработки ошибок
+      'file.unexpectedData': 'Получены неожиданные данные.', // Для обработки ошибок
+      'file.back': 'Назад',
     }
   }
 };

@@ -3,6 +3,7 @@ from sqlalchemy import and_, desc, asc
 from app.core.database import get_db_session
 from app.models.base import Group, GroupMember, File, User
 from app.models.base import file_group # Таблица связи файлов и групп
+from sqlalchemy.orm import joinedload 
 
 def create_group_db(group: Group) -> Group:
     with get_db_session() as db:
@@ -134,3 +135,13 @@ def get_user_by_id_db(user_id: str) -> Optional[User]:
     """Получает пользователя по ID."""
     with get_db_session() as db:
         return db.query(User).filter(User.id == user_id).first()
+
+def get_group_members_db(group_id: str) -> List[GroupMember]:
+    with get_db_session() as db:
+        members = (
+            db.query(GroupMember)
+            .options(joinedload(GroupMember.user)) # <-- Загружаем связанного пользователя
+            .filter(GroupMember.group_id == group_id)
+            .all()
+        )
+        return members

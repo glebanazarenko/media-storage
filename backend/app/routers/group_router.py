@@ -4,7 +4,7 @@ from app.core.security import get_current_user
 from app.models.base import User
 from app.schemas.file_schemas import FileListResponse
 from app.schemas.group_schemas import (
-    GroupCreate, GroupUpdate, GroupResponse, GroupMemberAdd, GroupMemberUpdate, GroupMemberResponse
+    GroupCreate, GroupUpdate, GroupResponse, GroupMemberAdd, GroupMemberUpdate, GroupMemberResponse, GroupMemberListResponse
 )
 from app.schemas.group_schemas import GroupFileAdd
 from app.services.group_service import (
@@ -18,7 +18,8 @@ from app.services.group_service import (
     update_member_role_service,
     get_group_files_service,
     add_file_to_group_service,
-    remove_file_from_group_service
+    remove_file_from_group_service,
+    get_group_members_service
 )
 
 router = APIRouter(prefix="/groups", tags=["Groups"])
@@ -49,6 +50,13 @@ def get_group(
     """Получение информации о конкретной группе (если пользователь имеет к ней доступ)."""
     return get_group_by_id_service(group_id, current_user)
 
+@router.get("/{group_id}/members", response_model=GroupMemberListResponse)
+def list_group_members(
+    group_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Получение списка участников группы (если пользователь имеет к ней доступ)."""
+    return get_group_members_service(group_id, current_user)
 
 @router.put("/{group_id}", response_model=GroupResponse)
 def update_group(

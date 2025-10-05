@@ -17,8 +17,24 @@ from app.schemas.file_schemas import FileCreate
 
 def create_file(file_data: FileCreate) -> DBFile:
     with get_db_session() as db:
-        db_file = DBFile(**file_data.model_dump())
+        file_data_dict = file_data.model_dump()
+        group_id = file_data_dict.pop('group_id', None) # Извлекаем group_id
+
+        db_file = DBFile(**file_data_dict)
         db.add(db_file)
+        db.flush() # flush, чтобы получить id файла до commit
+
+        # Если указана группа, добавляем связь
+        if group_id:
+            # Проверим, существует ли группа (опционально, но желательно)
+            group_exists = db.query(Group.id).filter(Group.id == group_id).first() is not None
+            if not group_exists:
+                db.rollback()
+                raise HTTPException(status_code=404, detail="Group not found")
+            # Добавляем запись в промежуточную таблицу
+            association = file_group.insert().values(file_id=db_file.id, group_id=group_id)
+            db.execute(association)
+
         db.commit()
         db.refresh(db_file)
         return db_file
@@ -307,7 +323,7 @@ def update_file(
         # Получаем файл
         db_file = (
             db.query(DBFile)
-            .filter(DBFile.id == file_id, DBFile.owner_id == user_id)
+            .filter(DBFile.id == file_id)
             .first()
         )
         if not db_file:

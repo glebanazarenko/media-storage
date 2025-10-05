@@ -16,8 +16,10 @@ from app.repositories.group_repository import (
     get_user_role_in_group_db,
     get_file_by_id_db,
     get_user_by_id_db,
+    get_group_members_db,
 )
 from app.models.base import User as DBUser # Используем алиас для ясности
+from app.schemas.group_schemas import GroupMemberListResponse, GroupMemberUserResponse
 
 def _check_user_can_edit_group(group: Group, user: User) -> bool:
     """Проверяет, может ли пользователь редактировать группу (админ или создатель)."""
@@ -226,3 +228,36 @@ def remove_file_from_group_service(group_id: str, file_id: str, user: User) -> d
         raise HTTPException(status_code=400, detail="File is not in the group")
     remove_file_from_group_db(group_id, file_id)
     return {"message": "File removed from group successfully"}
+
+def get_group_members_service(group_id: str, user: User) -> 'GroupMemberListResponse':
+    group = get_group_by_id_db(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if not _check_user_can_read_group(group, user):
+        raise HTTPException(status_code=403, detail="Access denied to group members")
+    members = get_group_members_db(group_id)
+
+    validated_members = []
+    for m in members:
+        # Преобразуем UUID в строку перед валидацией
+        member_dict = {
+            "user_id": str(m.user.id), # Преобразуем UUID пользователя в строку
+            "group_id": str(m.group_id), # Преобразуем UUID группы в строку
+            "role": m.role,
+            "invited_by": str(m.invited_by) if m.invited_by else None, # Преобразуем, если не None
+            "invited_at": m.invited_at,
+            "accepted_at": m.accepted_at,
+            "revoked_at": m.revoked_at,
+            # Создаем вложенный словарь для user
+            "user": {
+                "id": str(m.user.id), # Преобразуем UUID в строку
+                "username": m.user.username,
+                "email": m.user.email,
+                "is_active": m.user.is_active,
+                "is_admin": m.user.is_admin,
+                "created_at": m.user.created_at,
+                "updated_at": m.user.updated_at,
+            }
+        }
+        validated_members.append(GroupMemberUserResponse.model_validate(member_dict))
+    return GroupMemberListResponse(members=validated_members)

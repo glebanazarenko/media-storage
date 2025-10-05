@@ -30,8 +30,11 @@ import tempfile
 import os
 import time
 import mimetypes
+from uuid import UUID
 from urllib.parse import urlparse
 from fastapi import UploadFile, File, HTTPException
+from app.services.group_service import _check_user_can_edit_group
+from app.repositories.group_repository import get_group_by_id_db
 
 SORT_FIELD_MAP = {"date": "created_at", "name": "original_name", "size": "size", "duration": 'duration'}
 
@@ -46,6 +49,7 @@ def save_file_metadata(
     tag_names: str,
     category_slug: str,
     owner: User,
+    group_id: UUID | None = None,
 ) -> FileResponse:
     if not owner:
         raise HTTPException(status_code=401, detail="Not authorized")
@@ -69,6 +73,12 @@ def save_file_metadata(
         # Создайте превью отдельно, не загружая весь файл в память
         thumbnail_key = create_thumbnail_from_s3(key, file.content_type)
 
+    if group_id:
+        temp_user = User(id=owner.id) # Создаем временного пользователя
+        group = get_group_by_id_db(group_id)
+        if not _check_user_can_edit_group(group, temp_user):
+            raise HTTPException(status_code=403, detail="Access denied to add file to this group")
+
     file_create = FileCreate(
         original_name=file.filename,
         mime_type=file.content_type,
@@ -79,6 +89,7 @@ def save_file_metadata(
         owner_id=owner.id,
         category_id=category_id,
         thumbnail_path=thumbnail_key,
+        group_id=group_id,
     )
 
     file_record = create_file(file_create)

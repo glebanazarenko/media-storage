@@ -15,6 +15,10 @@ class FileCreate(BaseModel):
     owner_id: UUID
     category_id: UUID
     thumbnail_path: Optional[str] = None
+    group_id: Optional[UUID] = None
+
+    class Config:
+        from_attributes = True
 
 
 class FileResponse(FileCreate):

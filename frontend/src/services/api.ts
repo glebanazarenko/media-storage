@@ -159,6 +159,9 @@ export const groupsAPI = {
   
   getGroup: (groupId: string) => 
     api.get(`/groups/${groupId}`), // Возвращает GroupResponse
+
+  getGroupMembers: (groupId: string) =>
+    api.get(`/groups/${groupId}/members`), // Возвращает GroupResponse
   
   createGroup: (data: { name: string; description?: string }) => 
     api.post('/groups/', data), // Принимает GroupCreate
@@ -190,8 +193,8 @@ export const groupsAPI = {
     api.post(`/groups/${groupId}/files`, { file_id: fileId }),
   
   // Remove file from group
-  removeFileFromGroup: (groupId: string, fileId: string) => 
-    api.delete(`/groups/${groupId}/files/${fileId}`),
+  removeFileFromGroup: (fileId: string) => 
+    api.delete(`/files/${fileId}`),
 };
 
 // User endpoints

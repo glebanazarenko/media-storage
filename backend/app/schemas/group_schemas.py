@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from app.schemas.file_schemas import FileResponse
+from app.schemas.user_schemas import UserResponse
 
 # --- Схемы для групп ---
 class GroupBase(BaseModel):
@@ -61,6 +62,19 @@ class GroupFileListResponse(BaseModel):
     total: int
     page: int
     limit: int
+
+    class Config:
+        from_attributes = True
+
+
+class GroupMemberUserResponse(GroupMemberResponse):
+    user: UserResponse
+
+    class Config:
+        from_attributes = True
+
+class GroupMemberListResponse(BaseModel):
+    members: List[GroupMemberUserResponse]
 
     class Config:
         from_attributes = True

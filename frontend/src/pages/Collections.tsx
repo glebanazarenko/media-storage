@@ -2,59 +2,103 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Users, Lock, Globe, Folder, Eye, Edit, Trash2 } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
-import { groupsAPI, Group } from '../services/api'; // Импортируем groupsAPI и Group
-import { useNavigate } from 'react-router-dom'; // Для навигации
+import { groupsAPI, Group } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext'; // Импортируем AuthContext
+
+// Расширим интерфейс Group, чтобы включить роль пользователя
+interface GroupWithRole extends Group {
+  userRoleInGroup: string | null;
+}
 
 export const Collections: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [collections, setCollections] = useState<Group[]>([]); // Используем Group
+  const { user } = useAuth(); // Получаем текущего пользователя
+  const [collections, setCollections] = useState<GroupWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Загрузка коллекций (групп) при монтировании
+  // Загрузка коллекций (групп) и ролей пользователей в них
   useEffect(() => {
-    const fetchCollections = async () => {
+    const fetchCollectionsWithRoles = async () => {
+      if (!user?.id) {
+        // Если пользователь не авторизован, нечего загружать
+        setCollections([]);
+        setLoading(false);
+        return;
+      }
       try {
         setLoading(true);
         setError(null);
         const response = await groupsAPI.getGroups();
-        console.log("API Response for Groups:", response); // Лог для отладки
-
-        // Проверяем, что response.data существует и содержит свойство data
+        let groupsData: Group[] = [];
         if (response.data && Array.isArray(response.data.data)) {
-            setCollections(response.data.data);
+          groupsData = response.data.data;
         } else if (Array.isArray(response.data)) {
-            // Если API возвращает массив сразу в response.data
-            setCollections(response.data);
+          groupsData = response.data;
         } else {
-            console.error("Unexpected API response structure:", response);
-            setError(t('file.unexpectedApiResponse')); // Добавьте эту строку в i18n, если нужно
-            setCollections([]); // Устанавливаем пустой массив в случае ошибки
+          console.error("Unexpected API response structure:", response);
+          setError(t('file.unexpectedApiResponse'));
+          setCollections([]);
+          setLoading(false);
+          return;
         }
+
+        // Для каждой группы получаем роль текущего пользователя
+        const groupsWithRolesPromises = groupsData.map(async (group) => {
+          try {
+            // Загружаем всех участников группы
+            const membersResponse = await groupsAPI.getGroupMembers(group.id);
+            let membersData = membersResponse.data;
+            let userRole = null;
+            if (membersData && Array.isArray(membersData.members)) {
+              const member = membersData.members.find((m: any) => m.user_id === user.id);
+              userRole = member?.role || null;
+            } else if (Array.isArray(membersData)) {
+              const member = membersData.find((m: any) => m.user_id === user.id);
+              userRole = member?.role || null;
+            } else {
+              console.error(`Unexpected API response structure for members of group ${group.id}:`, membersResponse);
+              // Возможно, роль можно получить другим способом или установить как null
+              userRole = null;
+            }
+            // Возвращаем объект, объединяющий данные группы и роль пользователя
+            return { ...group, userRoleInGroup: userRole };
+          } catch (err) {
+            console.error(`Error fetching role for user in group ${group.id}:`, err);
+            // В случае ошибки получения роли, устанавливаем null
+            return { ...group, userRoleInGroup: null };
+          }
+        });
+
+        // Ждем завершения всех промисов
+        const groupsWithRoles = await Promise.all(groupsWithRolesPromises);
+
+        setCollections(groupsWithRoles);
       } catch (err: any) {
         console.error('Error fetching collections:', err);
         setError(err.response?.data?.detail || t('file.failedToUpdate'));
-        setCollections([]); // Устанавливаем пустой массив в случае ошибки
+        setCollections([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCollections();
-  }, [t]);
+    fetchCollectionsWithRoles();
+  }, [t, user?.id]); // Добавили user.id в зависимости
 
   const handleCreateCollection = async () => {
     const name = prompt(t('file.enterCollectionName'));
-    if (name) {
+    if (name && user?.id) { // Убедимся, что пользователь существует
       try {
         const newCollectionData = await groupsAPI.createGroup({ name });
-        console.log("API Response for Create Group:", newCollectionData); // Лог для отладки
-        // Проверяем структуру ответа
+        console.log("API Response for Create Group:", newCollectionData);
         if (newCollectionData.data && newCollectionData.data.data) {
-            setCollections(prev => [...prev, newCollectionData.data.data]); // Предполагаем { data: Group }
+          // При создании пользователь становится администратором, поэтому устанавливаем роль
+          setCollections(prev => [...prev, { ...newCollectionData.data.data, userRoleInGroup: "admin" }]);
         } else if (newCollectionData.data) {
-            setCollections(prev => [...prev, newCollectionData.data]); // Если сразу возвращается Group
+          setCollections(prev => [...prev, { ...newCollectionData.data, userRoleInGroup: "admin" }]);
         } else {
              console.error("Unexpected API response structure on create:", newCollectionData);
         }
@@ -69,7 +113,6 @@ export const Collections: React.FC = () => {
     if (window.confirm(t('file.confirmDeleteCollection', { name: collectionName }))) {
       try {
         await groupsAPI.deleteGroup(collectionId);
-        // Удаляем коллекцию из списка
         setCollections(prev => prev.filter(c => c.id !== collectionId));
       } catch (err: any) {
         console.error('Error deleting collection:', err);
@@ -82,12 +125,7 @@ export const Collections: React.FC = () => {
     return new Date(dateString).toLocaleDateString();
   };
 
-  // Функция для получения эскиза файла для коллекции (пока заглушка)
-  const getCollectionThumbnail = (collection: Group): string | null => {
-    // В реальности, возможно, коллекция будет хранить ID файла для эскиза или использовать первый файл
-    // Пока возвращаем null или генерируем URL
-    // Пример: return `https://images.pexels.com/photos/.../${collection.name}.jpeg?auto=compress&cs=tinysrgb&w=400`;
-    // Для примера используем генератор изображений
+  const getCollectionThumbnail = (collection: GroupWithRole): string | null => {
     return `https://placehold.co/400x225/1e293b/94a3b8?text=${encodeURIComponent(collection.name)}`;
   };
 
@@ -117,13 +155,12 @@ export const Collections: React.FC = () => {
     );
   }
 
-  // Проверяем, что collections - это массив перед использованием .length и .map
   if (!Array.isArray(collections)) {
      console.error("Collections state is not an array:", collections);
      return (
       <Layout>
         <div className="p-6">
-          <div className="text-red-500">{t('file.unexpectedData')}</div> {/* Добавьте эту строку в i18n, если нужно */}
+          <div className="text-red-500">{t('file.unexpectedData')}</div>
         </div>
       </Layout>
      );
@@ -150,7 +187,7 @@ export const Collections: React.FC = () => {
           </button>
         </div>
 
-        {collections.length === 0 ? ( // Теперь collections гарантированно массив
+        {collections.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
               <Folder className="w-8 h-8 text-slate-400" />
@@ -167,12 +204,11 @@ export const Collections: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {collections.map((collection) => ( // collections - массив
+            {collections.map((collection) => (
               <div
                 key={collection.id}
                 className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-slate-700 transition-all duration-300 group relative"
               >
-                {/* Thumbnail */}
                 <div className="relative aspect-video bg-slate-800 overflow-hidden">
                   <img
                     src={getCollectionThumbnail(collection)}
@@ -180,33 +216,32 @@ export const Collections: React.FC = () => {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                   <div className="absolute top-3 right-3 flex space-x-2">
-                    {/* Отображаем иконку в зависимости от уровня доступа пользователя */}
-                    {/* Предположим, что access_level указывает на роль пользователя */}
-                    {collection.access_level === "admin" ? ( // Пример: если пользователь админ
+                    {/* Отображаем иконку в зависимости от userRoleInGroup */}
+                    {collection.userRoleInGroup === "admin" ? (
                       <div className="bg-purple-500/20 backdrop-blur-sm border border-purple-500/50 text-purple-300 px-2 py-1 rounded-full text-xs flex items-center space-x-1">
-                        <span>Admin</span>
+                        <span>{t('Admin')}</span>
                       </div>
-                    ) : collection.access_level === "editor" ? (
+                    ) : collection.userRoleInGroup === "editor" ? (
                       <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-500/50 text-blue-300 px-2 py-1 rounded-full text-xs flex items-center space-x-1">
-                        <span>Editor</span>
+                        <span>{t('Editer')}</span>
                       </div>
-                    ) : collection.access_level === "reader" ? (
+                    ) : collection.userRoleInGroup === "reader" ? (
                       <div className="bg-green-500/20 backdrop-blur-sm border border-green-500/50 text-green-300 px-2 py-1 rounded-full text-xs flex items-center space-x-1">
-                        <span>Reader</span>
+                        <span>{t('Reader')}</span>
                       </div>
-                    ) : null}
+                    ) : (
+                      // Если роль не определена, можно показать "No Access" или просто не отображать
+                      <div className="bg-slate-500/20 backdrop-blur-sm border border-slate-500/50 text-slate-300 px-2 py-1 rounded-full text-xs flex items-center space-x-1">
+                        <span>{t('No Access')}</span>
+                      </div>
+                    )}
                   </div>
-                  {/* Количество файлов пока не приходит из API, нужно будет обновить бэкенд или получать отдельно */}
-                  {/* <div className="absolute bottom-3 left-3 bg-black/50 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm">
-                    {collection.fileCount} {t('file.files')} // Нужно будет добавить в Group
-                  </div> */}
                 </div>
 
-                {/* Content */}
                 <div className="p-6">
                   <h3
                     className="font-semibold text-white text-lg mb-2 group-hover:text-purple-300 transition-colors cursor-pointer"
-                    onClick={() => navigate(`/collections/${collection.id}`)} // Навигация по клику на имя
+                    onClick={() => navigate(`/collections/${collection.id}`)}
                   >
                     {collection.name}
                   </h3>
@@ -218,19 +253,11 @@ export const Collections: React.FC = () => {
                   )}
 
                   <div className="flex items-center justify-between text-sm text-slate-500">
-                    {/* Количество участников пока не приходит из API */}
-                    {/* <div className="flex items-center space-x-1">
-                      <Users className="w-4 h-4" />
-                      <span>{getMemberText(1)} {/* Временно 1, нужно получать из API */}
-                    {/* </span>
-                    </div> */}
                     <span>{t('file.updated')} {formatDate(collection.updated_at)}</span>
                   </div>
                 </div>
 
-                {/* Кнопки действий */}
                 <div className="absolute top-3 left-3 flex space-x-1">
-                  {/* Просмотр коллекции */}
                   <button
                     onClick={() => navigate(`/collections/${collection.id}`)}
                     className="bg-slate-800/80 backdrop-blur-sm text-white p-1 rounded-full transition-colors hover:bg-slate-700"
@@ -238,19 +265,17 @@ export const Collections: React.FC = () => {
                   >
                     <Eye className="w-4 h-4" />
                   </button>
-                  {/* Редактировать коллекцию (пока простое переименование через prompt) */}
                   <button
                     onClick={async () => {
                       const newName = prompt(t('file.enterNewName'), collection.name);
                       if (newName && newName !== collection.name) {
                         try {
                           const updatedCollection = await groupsAPI.updateGroup(collection.id, { name: newName, description: collection.description });
-                          console.log("API Response for Update Group:", updatedCollection); // Лог для отладки
-                          // Проверяем структуру ответа
+                          console.log("API Response for Update Group:", updatedCollection);
                           if (updatedCollection.data && updatedCollection.data.data) {
-                              setCollections(prev => prev.map(c => c.id === collection.id ? updatedCollection.data.data : c)); // Предполагаем { data: Group }
+                              setCollections(prev => prev.map(c => c.id === collection.id ? { ...updatedCollection.data.data, userRoleInGroup: c.userRoleInGroup } : c));
                           } else if (updatedCollection.data) {
-                              setCollections(prev => prev.map(c => c.id === collection.id ? updatedCollection.data : c)); // Если сразу возвращается Group
+                              setCollections(prev => prev.map(c => c.id === collection.id ? { ...updatedCollection.data, userRoleInGroup: c.userRoleInGroup } : c));
                           } else {
                              console.error("Unexpected API response structure on update:", updatedCollection);
                           }
@@ -265,7 +290,6 @@ export const Collections: React.FC = () => {
                   >
                     <Edit className="w-4 h-4" />
                   </button>
-                  {/* Удалить коллекцию */}
                   <button
                     onClick={() => handleDeleteCollection(collection.id, collection.name)}
                     className="bg-slate-800/80 backdrop-blur-sm text-red-400 p-1 rounded-full transition-colors hover:bg-red-900/50"

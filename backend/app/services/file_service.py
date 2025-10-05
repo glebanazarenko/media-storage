@@ -24,7 +24,7 @@ from app.repositories.s3_repository import upload_file_to_s3
 from app.repositories.tag_repository import get_or_create_tags, get_tag_names_by_ids
 from app.schemas.file_schemas import FileCreate, FileResponse
 from app.services.s3_service import create_thumbnail_from_s3
-from app.services.group_service import _check_user_can_read_file, _check_user_can_edit_file_in_group
+from app.services.group_service import _check_user_can_read_file, _check_user_can_edit_file_in_group, _check_user_can_add_file
 import requests
 import tempfile
 import os
@@ -76,7 +76,7 @@ def save_file_metadata(
     if group_id:
         temp_user = User(id=owner.id) # Создаем временного пользователя
         group = get_group_by_id_db(group_id)
-        if not _check_user_can_edit_group(group, temp_user):
+        if not _check_user_can_add_file(group, temp_user):
             raise HTTPException(status_code=403, detail="Access denied to add file to this group")
 
     file_create = FileCreate(

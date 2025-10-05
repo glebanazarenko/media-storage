@@ -26,6 +26,12 @@ def _check_user_can_edit_group(group: Group, user: User) -> bool:
     member_role = get_user_role_in_group_db(group.id, user.id)
     return member_role in ["admin"] or group.creator_id == user.id
 
+def _check_user_can_add_file(group: Group, user: User) -> bool:
+    """Проверяет, может ли пользователь редактировать группу (админ или создатель)."""
+    member_role = get_user_role_in_group_db(group.id, user.id)
+    return member_role in ["admin", 'editor'] or group.creator_id == user.id
+
+
 def _check_user_can_read_group(group: Group, user: User) -> bool:
     """Проверяет, может ли пользователь читать группу (любая роль или создатель)."""
     member_role = get_user_role_in_group_db(group.id, user.id)

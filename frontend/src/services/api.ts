@@ -213,18 +213,25 @@ export const usersAPI = {
 };
 
 export const backUpAPI = {
-  downloadBackup: () => {
-    return api.get('/backup/download', {
-      responseType: 'blob'
-    });
+  // Инициирует создание бэкапа для пользователя
+  initiateBackup: () => {
+    return api.get('/backup/download'); // Теперь возвращает { task_id: string, message: string }
   },
-
-  downloadFullBackup: () => {
-    return api.get('/backup/download-full', {
-      responseType: 'blob'
-    });
+  // Инициирует создание полного бэкапа (для админов)
+  initiateFullBackup: () => {
+    return api.get('/backup/download-full'); // Теперь возвращает { task_id: string, message: string }
   },
-
+  // Проверяет статус задачи по ID
+  getBackupStatus: (taskId: string) => {
+    return api.get(`/backup/status/${taskId}`); // Возвращает { task_id: string, status: 'pending' | 'in_progress' | 'completed' | 'failed', ... }
+  },
+  // Вызывает редирект на готовый бэкап по ID задачи
+  downloadBackupByTaskId: (taskId: string) => {
+    // Возвращаем URL для редиректа, а не делаем запрос напрямую, чтобы браузер обработал его
+    // или используем window.location.assign
+    return `${API_BASE_URL}/backup/download-task/${taskId}`;
+  },
+  // Старый метод восстановления остается без изменений
   restoreBackup: (formData: FormData) => {
     return api.post('/backup/upload', formData, {
       headers: {

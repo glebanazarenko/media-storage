@@ -1,4 +1,3 @@
-# backend/app/services/backup_service.py
 import io
 import json
 import os
@@ -8,16 +7,15 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
-
 from botocore.exceptions import ClientError
 from fastapi import HTTPException, UploadFile
-
 from app.core.config import settings
 from app.core.database import get_db_session, s3_client
 from app.models.base import Category
 from app.models.base import File as DBFile
 from app.models.base import Tag, User, Group, GroupMember
 from app.models.base import file_group # Импортируем таблицу связи
+from app.tasks.backup_tasks import create_backup_task # Импортируем задачу
 
 
 class BackupService:
@@ -33,82 +31,19 @@ class BackupService:
                 status_code=500, detail=f"Failed to download file from S3: {str(e)}"
             )
 
-    def create_backup(self, current_user: User) -> Tuple[io.BytesIO, str]:
-        """Создает бэкап всех файлов пользователя и возвращает ZIP архив и имя файла"""
-        try:
-            # Получаем все файлы пользователя и связанные данные
-            with get_db_session() as db:
-                files = (
-                    db.query(DBFile).filter(DBFile.owner_id == current_user.id).all()
-                )
-                # Получаем теги, используемые в файлах пользователя
-                file_ids = [f.id for f in files]
-                tags = db.query(Tag).filter(Tag.id.in_([tid for f in files for tid in f.tags])).all()
-                # Получаем категории, используемые в файлах пользователя
-                category_ids = {f.category_id for f in files if f.category_id}
-                categories = db.query(Category).filter(Category.id.in_(category_ids)).all() if category_ids else []
-                # Получаем коллекции, к которым принадлежат файлы пользователя
-                groups = (
-                    db.query(Group)
-                    .join(file_group, Group.id == file_group.c.group_id)
-                    .filter(file_group.c.file_id.in_(file_ids))
-                    .all()
-                )
-                # Получаем связи файлов с коллекциями
-                file_group_links = db.query(file_group).filter(file_group.c.file_id.in_(file_ids)).all()
+    def create_backup(self, current_user: User) -> str: # Теперь возвращает ID задачи
+        """Запускает задачу создания бэкапа для пользователя и возвращает ID задачи"""
+        # Запускаем задачу Celery асинхронно
+        task = create_backup_task.delay(user_id=str(current_user.id), backup_type="user")
+        return task.id # Возвращаем ID задачи
 
-                # Создаем структуру данных для бэкапа
-                backup_data = self._prepare_backup_data(
-                    current_user, files, tags, categories, groups, file_group_links
-                )
-
-                # Создаем ZIP архив
-                zip_buffer = self._create_zip_archive(backup_data, files)
-
-                filename = f"backup_{current_user.username}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
-
-                return zip_buffer, filename
-
-        except Exception as e:
-            print(f"Backup error: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Backup creation failed: {str(e)}"
-            )
-
-    def create_full_backup(self, current_user: User) -> Tuple[io.BytesIO, str]:
-        """Создает полный бэкап всех данных системы (только для админов)"""
+    def create_full_backup(self, current_user: User) -> str: # Теперь возвращает ID задачи
+        """Запускает задачу создания полного бэкапа и возвращает ID задачи"""
         if not current_user.is_admin:
             raise HTTPException(status_code=403, detail="Admin rights required for full backup")
-        
-        try:
-            # Получаем все данные системы
-            with get_db_session() as db:
-                files = db.query(DBFile).all()
-                tags = db.query(Tag).all()
-                categories = db.query(Category).all()
-                users = db.query(User).all()
-                groups = db.query(Group).all()
-                group_members = db.query(GroupMember).all()
-                # Получаем все связи файлов с коллекциями
-                file_group_links = db.query(file_group).all()
-
-                # Создаем структуру данных для полного бэкапа
-                backup_data = self._prepare_full_backup_data(
-                    users, files, tags, categories, groups, group_members, file_group_links
-                )
-
-                # Создаем ZIP архив
-                zip_buffer = self._create_zip_archive(backup_data, files)
-
-                filename = f"full_backup_all_users_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
-
-                return zip_buffer, filename
-
-        except Exception as e:
-            print(f"Backup error: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Full backup creation failed: {str(e)}"
-            )
+        # Запускаем задачу Celery асинхронно
+        task = create_backup_task.delay(user_id=str(current_user.id), backup_type="full")
+        return task.id # Возвращаем ID задачи
 
     def _prepare_backup_data(
         self,

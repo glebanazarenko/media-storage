@@ -70,6 +70,7 @@ class BackupService:
                 return zip_buffer, filename
 
         except Exception as e:
+            print(f"Backup error: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Backup creation failed: {str(e)}"
             )
@@ -104,6 +105,7 @@ class BackupService:
                 return zip_buffer, filename
 
         except Exception as e:
+            print(f"Backup error: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Full backup creation failed: {str(e)}"
             )
@@ -330,83 +332,88 @@ class BackupService:
         self, backup_data: Dict[str, Any], files: List[DBFile]
     ) -> io.BytesIO:
         """Создает ZIP архив с данными бэкапа"""
-        zip_buffer = io.BytesIO()
-        with tempfile.TemporaryDirectory() as temp_dir: # Используем временную директорию
-            zip_path = os.path.join(temp_dir, "backup.zip")
-            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                # Добавляем JSON с метаданными
-                json_data = json.dumps(backup_data, indent=2, ensure_ascii=False)
-                zip_file.writestr("backup_metadata.json", json_data)
+        try:
+            zip_buffer = io.BytesIO()
+            with tempfile.TemporaryDirectory() as temp_dir: # Используем временную директорию
+                zip_path = os.path.join(temp_dir, "backup.zip")
+                with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                    # Добавляем JSON с метаданными
+                    json_data = json.dumps(backup_data, indent=2, ensure_ascii=False)
+                    zip_file.writestr("backup_metadata.json", json_data)
 
-                # Добавляем реальные файлы из S3
-                for file in files:
-                    try:
-                        # Добавляем основной файл
-                        if file.file_path:
-                            file_content = self._download_file_from_s3(file.file_path)
-                            zip_file.writestr(
-                                f"files/{file.id}_{file.original_name}", file_content
-                            )
-                        # Добавляем thumbnail, если есть
-                        if file.thumbnail_path:
-                            thumbnail_content = self._download_file_from_s3(
-                                file.thumbnail_path
-                            )
-                            zip_file.writestr(
-                                f"thumbnails/{file.id}_thumbnail.jpg", thumbnail_content
-                            )
-                        # Добавляем preview, если есть
-                        if file.preview_path:
-                            preview_content = self._download_file_from_s3(file.preview_path)
-                            zip_file.writestr(
-                                f"previews/{file.id}_preview.jpg", preview_content
-                            )
+                    # Добавляем реальные файлы из S3
+                    for file in files:
+                        try:
+                            # Добавляем основной файл
+                            if file.file_path:
+                                file_content = self._download_file_from_s3(file.file_path)
+                                zip_file.writestr(
+                                    f"files/{file.id}_{file.original_name}", file_content
+                                )
+                            # Добавляем thumbnail, если есть
+                            if file.thumbnail_path:
+                                thumbnail_content = self._download_file_from_s3(
+                                    file.thumbnail_path
+                                )
+                                zip_file.writestr(
+                                    f"thumbnails/{file.id}_thumbnail.jpg", thumbnail_content
+                                )
+                            # Добавляем preview, если есть
+                            if file.preview_path:
+                                preview_content = self._download_file_from_s3(file.preview_path)
+                                zip_file.writestr(
+                                    f"previews/{file.id}_preview.jpg", preview_content
+                                )
 
-                        # Добавляем транскодированные файлы ---
-                        if file.hls_manifest_path:
-                            # Определяем базовый путь к транскодированным данным в S3
-                            # hls_manifest_path обычно выглядит как transcoded/<file_id>/hls/master.m3u8
-                            # Нам нужна папка transcoded/<file_id>/hls/
-                            hls_s3_base_parts = file.hls_manifest_path.split('/')
-                            if len(hls_s3_base_parts) >= 3:
-                                hls_s3_base_key = '/'.join(hls_s3_base_parts[:-1]) + '/' # Путь к папке hls
-                                # Создаем временную папку для транскодированных файлов этого файла
-                                hls_temp_dir = os.path.join(temp_dir, f"hls_files/{file.id}")
-                                os.makedirs(hls_temp_dir, exist_ok=True)
+                            # Добавляем транскодированные файлы ---
+                            if file.hls_manifest_path:
+                                # Определяем базовый путь к транскодированным данным в S3
+                                # hls_manifest_path обычно выглядит как transcoded/<file_id>/hls/master.m3u8
+                                # Нам нужна папка transcoded/<file_id>/hls/
+                                hls_s3_base_parts = file.hls_manifest_path.split('/')
+                                if len(hls_s3_base_parts) >= 3:
+                                    hls_s3_base_key = '/'.join(hls_s3_base_parts[:-1]) + '/' # Путь к папке hls
+                                    # Создаем временную папку для транскодированных файлов этого файла
+                                    hls_temp_dir = os.path.join(temp_dir, f"hls_files/{file.id}")
+                                    os.makedirs(hls_temp_dir, exist_ok=True)
 
-                                try:
-                                    # Список объектов в S3 по префиксу
-                                    paginator = s3_client.get_paginator('list_objects_v2')
-                                    pages = paginator.paginate(Bucket=settings.AWS_S3_BUCKET_NAME, Prefix=hls_s3_base_key)
+                                    try:
+                                        # Список объектов в S3 по префиксу
+                                        paginator = s3_client.get_paginator('list_objects_v2')
+                                        pages = paginator.paginate(Bucket=settings.AWS_S3_BUCKET_NAME, Prefix=hls_s3_base_key)
 
-                                    for page in pages:
-                                        if 'Contents' in page:
-                                            for obj in page['Contents']:
-                                                s3_key = obj['Key']
-                                                # Скачиваем файл во временную папку
-                                                # Вычисляем относительный путь внутри папки транскодирования
-                                                relative_s3_key = s3_key[len(hls_s3_base_key):] # Убираем базовый префикс
-                                                if relative_s3_key: # Убедимся, что ключ не пустой (это сама папка)
-                                                    local_file_path = os.path.join(hls_temp_dir, relative_s3_key)
-                                                    os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
-                                                    s3_client.download_file(settings.AWS_S3_BUCKET_NAME, s3_key, local_file_path)
-                                                    # Добавляем файл в ZIP, сохраняя структуру папок
-                                                    zip_arcname = f"transcoded/{file.id}/hls/{relative_s3_key}"
-                                                    zip_file.write(local_file_path, arcname=zip_arcname)
+                                        for page in pages:
+                                            if 'Contents' in page:
+                                                for obj in page['Contents']:
+                                                    s3_key = obj['Key']
+                                                    # Скачиваем файл во временную папку
+                                                    # Вычисляем относительный путь внутри папки транскодирования
+                                                    relative_s3_key = s3_key[len(hls_s3_base_key):] # Убираем базовый префикс
+                                                    if relative_s3_key: # Убедимся, что ключ не пустой (это сама папка)
+                                                        local_file_path = os.path.join(hls_temp_dir, relative_s3_key)
+                                                        os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                                                        s3_client.download_file(settings.AWS_S3_BUCKET_NAME, s3_key, local_file_path)
+                                                        # Добавляем файл в ZIP, сохраняя структуру папок
+                                                        zip_arcname = f"transcoded/{file.id}/hls/{relative_s3_key}"
+                                                        zip_file.write(local_file_path, arcname=zip_arcname)
 
-                                except ClientError as e:
-                                    print(f"Warning: Could not backup transcoded files for {file.id}: {str(e)}")
-                                    # Продолжаем, даже если транскодированные файлы не удалось забэкапить
+                                    except ClientError as e:
+                                        print(f"Warning: Could not backup transcoded files for {file.id}: {str(e)}")
+                                        # Продолжаем, даже если транскодированные файлы не удалось забэкапить
 
-                    except Exception as e:
-                        print(f"Warning: Could not backup file {file.id}: {str(e)}")
-                        # Продолжаем с другими файлами даже если один не удался
+                        except Exception as e:
+                            print(f"Warning: Could not backup file {file.id}: {str(e)}")
+                            # Продолжаем с другими файлами даже если один не удался
 
-            # Читаем содержимое временного zip файла в BytesIO
-            with open(zip_path, 'rb') as f:
-                zip_buffer.write(f.read())
-            zip_buffer.seek(0)
-            return zip_buffer
+                # Читаем содержимое временного zip файла в BytesIO
+                with open(zip_path, 'rb') as f:
+                    zip_buffer.write(f.read())
+                zip_buffer.seek(0)
+                return zip_buffer
+        except Exception as e:
+            print(f"Zip error: {e}")
+            raise e
+        
 
     async def restore_backup(
         self, backup_file: UploadFile, current_user: User

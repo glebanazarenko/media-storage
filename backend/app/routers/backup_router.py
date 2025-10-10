@@ -5,6 +5,7 @@ from celery.result import AsyncResult
 from app.core.database import s3_client
 import io
 from app.core.config import settings
+from typing import Iterator
 from app.core.security import get_current_user
 from app.models.base import User
 from app.schemas.backup_schemas import BackupUploadResponse
@@ -70,12 +71,11 @@ def download_backup_by_task_id(
 ):
     """
     Возвращает готовый бэкап, если задача завершена.
-    (НОВАЯ ВЕРСИЯ: Скачивает содержимое из S3 через FastAPI)
+    (НОВАЯ ВЕРСИЯ: Стримит содержимое из S3 через FastAPI)
     """
     task_result = AsyncResult(task_id, app=celery_app)
 
     if task_result.state != 'SUCCESS':
-        # Проверяем, завершена ли задача успешно
         if task_result.state == 'FAILURE':
             raise HTTPException(status_code=500, detail=f"Backup creation failed: {str(task_result.info)}")
         else:
@@ -86,26 +86,33 @@ def download_backup_by_task_id(
     if not s3_key:
         raise HTTPException(status_code=500, detail="Backup file location not found in task result")
 
-    # Скачиваем содержимое файла из S3 в память
+    # Получаем объект из S3
     try:
         response = s3_client.get_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
-        file_content = response['Body'].read() # Читаем всё содержимое в память
-        file_size = response.get('ContentLength', 0) # Получаем размер файла для заголовка
-        content_type = response.get('ContentType', 'application/zip') # Получаем тип контента
+        file_size = response.get('ContentLength', 0)
+        content_type = response.get('ContentType', 'application/zip')
     except ClientError as e:
         print(f"Error downloading file from S3: {e}")
         raise HTTPException(status_code=500, detail="Failed to download backup file from storage")
 
-    # Создаем BytesIO из содержимого
-    file_like = io.BytesIO(file_content)
+    def iter_chunks(chunk_size: int = 8192) -> Iterator[bytes]:
+        """
+        Генератор чанков из тела ответа S3
+        """
+        stream = response['Body']
+        while True:
+            chunk = stream.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
 
-    # Возвращаем содержимое как StreamingResponse для скачивания
+    # Возвращаем как StreamingResponse
     return StreamingResponse(
-        file_like,
+        iter_chunks(),
         media_type=content_type,
         headers={
-            "Content-Disposition": f"attachment; filename={s3_key.split('/')[-1]}", # Имя файла из s3_key
-            "Content-Length": str(file_size) # Указываем размер для отображения прогресса
+            "Content-Disposition": f"attachment; filename={s3_key.split('/')[-1]}",
+            "Content-Length": str(file_size)
         }
     )
 

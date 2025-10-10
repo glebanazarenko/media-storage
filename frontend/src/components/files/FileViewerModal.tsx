@@ -60,9 +60,15 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [videoNatural, setVideoNatural] = useState({ width: 800, height: 450 });
   // Состояние для отслеживания, нужно ли использовать HLS
   const [shouldUseHls, setShouldUseHls] = useState(true);
+  // Состояние для отслеживания попыток HLS
+  const [hlsRetryCount, setHlsRetryCount] = useState(0);
+  // Состояние для отслеживания попыток прямого стриминга
+  const [streamRetryCount, setStreamRetryCount] = useState(0);
+
   // Для двойного клика
   const [lastClickTime, setLastClickTime] = useState(0);
   const [lastClickPosition, setLastClickPosition] = useState({ x: 0, y: 0 });
+
   // --- HLS STATE ---
   const hlsRef = useRef<Hls | null>(null); // Реф для экземпляра Hls
 
@@ -133,14 +139,12 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   useEffect(() => {
     const video = videoRef.current;
     const fileUrl = getFileUrl(); // Получаем правильный URL
-
     // Флаг для отслеживания, уничтожен ли текущий эффект
     let isMounted = true;
 
     if (isVideo && video) {
       // --- ИЗМЕНЕНИЕ: Проверяем, является ли URL HLS-манифестом и нужно ли использовать HLS ---
       const isHlsManifest = fileUrl.includes('/manifest/hls/') && shouldUseHls;
-
       if (isHlsManifest) {
         // --- HLS ВОСПРОИЗВЕДЕНИЕ ---
         // Проверяем, поддерживает ли браузер нативно HLS (Safari)
@@ -148,16 +152,20 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           // Нативная поддержка HLS
           console.log("Using native HLS support for manifest:", fileUrl);
           video.src = fileUrl;
-
           // --- ДОБАВЛЕНО: Обработка ошибок для нативного HLS ---
           const handleVideoError = () => {
             if (!isMounted) return; // Проверяем, жив ли эффект
             console.error("Native HLS playback failed, falling back to direct streaming.");
-            setShouldUseHls(false); // Устанавливаем состояние для отката
+            // Увеличиваем счетчик ошибок HLS
+            setHlsRetryCount(prev => {
+              const newCount = prev + 1;
+              if (newCount >= 10) {
+                setShouldUseHls(false); // Отключаем HLS после 3 неудачных попыток
+              }
+              return newCount;
+            });
           };
-
           video.addEventListener('error', handleVideoError);
-
           // Очистка
           return () => {
             isMounted = false; // Устанавливаем флаг при очистке
@@ -172,18 +180,15 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               video.load();
             }
           };
-
         } else if (Hls.isSupported()) {
           // Поддержка через Hls.js
           console.log("Using Hls.js for manifest:", fileUrl);
-
           // Уничтожаем предыдущий экземпляр, если он есть (и он не был уничтожен ранее)
           if (hlsRef.current) {
             console.log("Destroying previous HLS instance in effect");
             hlsRef.current.destroy();
             hlsRef.current = null;
           }
-
           // Создаем новый экземпляр Hls
           const hls = new Hls({
             xhrSetup: function(xhr: XMLHttpRequest) {
@@ -195,27 +200,35 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             backBufferLength: 90
           });
           hlsRef.current = hls; // Сохраняем в ref
-
           hls.loadSource(fileUrl);
           hls.attachMedia(video);
-
           hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
             if (!isMounted) return; // Проверяем, жив ли эффект
             console.log("HLS Manifest parsed", data);
           });
-
           hls.on(Hls.Events.ERROR, (event, data) => {
             if (!isMounted) return; // Проверяем, жив ли эффект
             console.error("HLS Error:", data.type, data.details, data.fatal);
-            
             if (data.fatal) {
               switch(data.details) {
                 case Hls.ErrorDetails.MANIFEST_LOAD_ERROR:
                 case Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT:
                 case Hls.ErrorDetails.MANIFEST_PARSING_ERROR:
                   console.log("Fatal HLS manifest error, falling back to direct streaming");
-                  // ИЗМЕНЕНИЕ: Не уничтожаем HLS сразу, а только отключаем HLS
-                  setShouldUseHls(false);
+                  // Увеличиваем счетчик ошибок HLS
+                  setHlsRetryCount(prev => {
+                    const newCount = prev + 1;
+                    if (newCount >= 10) {
+                      // ИЗМЕНЕНИЕ: Не уничтожаем HLS сразу, а только отключаем HLS
+                      setShouldUseHls(false);
+                    } else {
+                      // Повторная попытка HLS
+                      console.log(`Retrying HLS, attempt ${newCount}`);
+                      hls.loadSource(fileUrl);
+                      hls.attachMedia(video);
+                    }
+                    return newCount;
+                  });
                   break;
                 case Hls.ErrorDetails.LEVEL_LOAD_ERROR:
                 case Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT:
@@ -229,12 +242,23 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   break;
                 default:
                   console.log("Fatal HLS error, falling back to direct streaming");
-                  setShouldUseHls(false);
+                  // Увеличиваем счетчик ошибок HLS
+                  setHlsRetryCount(prev => {
+                    const newCount = prev + 1;
+                    if (newCount >= 10) {
+                      setShouldUseHls(false);
+                    } else {
+                      // Повторная попытка HLS
+                      console.log(`Retrying HLS, attempt ${newCount}`);
+                      hls.loadSource(fileUrl);
+                      hls.attachMedia(video);
+                    }
+                    return newCount;
+                  });
                   break;
               }
             }
           });
-
           // --- ОЧИСТКА ---
           return () => {
             isMounted = false; // Устанавливаем флаг при очистке
@@ -244,7 +268,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
               hlsRef.current = null;
             }
           };
-
         } else {
           // Браузер не поддерживает HLS, но файл транскодирован
           console.error("HLS is not supported in this browser, but file is transcoded.");
@@ -254,20 +277,34 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         // --- ОБЫЧНОЕ ВОСПРОИЗВЕДЕНИЕ (для /stream или других форматов) ---
         // ИЗМЕНЕНИЕ: Всегда используем /stream endpoint для прямого воспроизведения
         const streamUrl = `${API_BASE_URL}/files/${file.id}/stream`;
-        
         // Проверяем, не установлен ли уже этот URL
         if (video.src !== streamUrl) {
           console.log("Using direct streaming:", streamUrl);
           video.src = streamUrl;
-          
           // ДОБАВЛЕНО: Обработка ошибок для прямого стриминга
           const handleStreamError = () => {
             if (!isMounted) return;
-            console.error("Direct streaming also failed for URL:", streamUrl);
+            console.error("Direct streaming failed for URL:", streamUrl);
+            // Увеличиваем счетчик ошибок прямого стриминга
+            setStreamRetryCount(prev => {
+              const newCount = prev + 1;
+              if (newCount >= 10) {
+                console.error("Direct streaming failed after 3 attempts.");
+                // Здесь можно добавить дополнительную логику, например, показ сообщения пользователю
+                // Показываем alert и закрываем модальное окно
+                alert("Не удается загрузить файл. Попробуйте позже.");
+                onClose(); // Закрываем модальное окно
+                return newCount; // Возвращаем обновленное значение
+              } else {
+                console.log(`Retrying direct streaming, attempt ${newCount}`);
+                // Просто перезагружаем URL
+                video.src = streamUrl;
+                video.load();
+              }
+              return newCount;
+            });
           };
-          
           video.addEventListener('error', handleStreamError);
-          
           return () => {
             isMounted = false;
             video.removeEventListener('error', handleStreamError);
@@ -279,7 +316,6 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         }
       }
     }
-
     // Очистка при размонтировании или смене файла
     return () => {
       isMounted = false; // Устанавливаем флаг при очистке
@@ -293,11 +329,13 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         video.load(); // Сбросить состояние видео
       }
     };
-  }, [file.id, shouldUseHls]); // Зависимости: важны для перезапуска при смене файла или состояния HLS
+  }, [file.id, shouldUseHls, hlsRetryCount, streamRetryCount]); // Зависимости: важны для перезапуска при смене файла, состояния HLS или счетчиков ошибок
 
   // Эффект для сброса состояния при смене файла
   useEffect(() => {
     setShouldUseHls(true);
+    setHlsRetryCount(0);
+    setStreamRetryCount(0);
   }, [file.id]);
 
   // Видео события

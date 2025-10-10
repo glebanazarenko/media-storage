@@ -1,3 +1,4 @@
+# backend/app/services/backup_service.py
 import io
 import json
 import os
@@ -15,7 +16,8 @@ from app.core.config import settings
 from app.core.database import get_db_session, s3_client
 from app.models.base import Category
 from app.models.base import File as DBFile
-from app.models.base import Tag, User
+from app.models.base import Tag, User, Group, GroupMember
+from app.models.base import file_group # Импортируем таблицу связи
 
 
 class BackupService:
@@ -39,12 +41,25 @@ class BackupService:
                 files = (
                     db.query(DBFile).filter(DBFile.owner_id == current_user.id).all()
                 )
-                tags = db.query(Tag).all()
-                categories = db.query(Category).all()
+                # Получаем теги, используемые в файлах пользователя
+                file_ids = [f.id for f in files]
+                tags = db.query(Tag).filter(Tag.id.in_([tid for f in files for tid in f.tags])).all()
+                # Получаем категории, используемые в файлах пользователя
+                category_ids = {f.category_id for f in files if f.category_id}
+                categories = db.query(Category).filter(Category.id.in_(category_ids)).all() if category_ids else []
+                # Получаем коллекции, к которым принадлежат файлы пользователя
+                groups = (
+                    db.query(Group)
+                    .join(file_group, Group.id == file_group.c.group_id)
+                    .filter(file_group.c.file_id.in_(file_ids))
+                    .all()
+                )
+                # Получаем связи файлов с коллекциями
+                file_group_links = db.query(file_group).filter(file_group.c.file_id.in_(file_ids)).all()
 
                 # Создаем структуру данных для бэкапа
                 backup_data = self._prepare_backup_data(
-                    current_user, files, tags, categories
+                    current_user, files, tags, categories, groups, file_group_links
                 )
 
                 # Создаем ZIP архив
@@ -71,10 +86,14 @@ class BackupService:
                 tags = db.query(Tag).all()
                 categories = db.query(Category).all()
                 users = db.query(User).all()
+                groups = db.query(Group).all()
+                group_members = db.query(GroupMember).all()
+                # Получаем все связи файлов с коллекциями
+                file_group_links = db.query(file_group).all()
 
                 # Создаем структуру данных для полного бэкапа
                 backup_data = self._prepare_full_backup_data(
-                    users, files, tags, categories
+                    users, files, tags, categories, groups, group_members, file_group_links
                 )
 
                 # Создаем ZIP архив
@@ -95,6 +114,8 @@ class BackupService:
         files: List[DBFile],
         tags: List[Tag],
         categories: List[Category],
+        groups: List[Group],
+        file_group_links: List # Список кортежей (file_id, group_id)
     ) -> Dict[str, Any]:
         """Подготавливает данные для бэкапа пользователя"""
         backup_data = {
@@ -105,6 +126,9 @@ class BackupService:
             "files": [],
             "tags": [],
             "categories": [],
+            "groups": [], # Новые данные
+            "group_members": [], # Новые данные
+            "file_group_links": [], # Новые данные
         }
 
         # Добавляем файлы
@@ -118,7 +142,7 @@ class BackupService:
                 "thumbnail_path": file.thumbnail_path,
                 "preview_path": file.preview_path,
                 "description": file.description,
-                "tags": file.tags,
+                "tags": [str(tid) for tid in file.tags], # Конвертируем в строки
                 "category_id": str(file.category_id) if file.category_id else None,
                 "owner_id": str(file.owner_id),
                 "owner_username": current_user.username,  # Добавляем username для сопоставления
@@ -126,6 +150,8 @@ class BackupService:
                 "updated_at": str(file.updated_at),
                 "transcoding_status": file.transcoding_status,
                 "duration": file.duration,
+                "hls_manifest_path": file.hls_manifest_path,
+                "dash_manifest_path": file.dash_manifest_path,
             }
             backup_data["files"].append(file_data)
 
@@ -151,6 +177,27 @@ class BackupService:
             }
             backup_data["categories"].append(category_data)
 
+        # Добавляем коллекции
+        for group in groups:
+            group_data = {
+                "id": str(group.id),
+                "name": group.name,
+                "description": group.description,
+                "creator_id": str(group.creator_id),
+                "access_level": group.access_level, # Уровень доступа может быть неактуален, но сохраняем
+                "created_at": str(group.created_at),
+                "updated_at": str(group.updated_at),
+            }
+            backup_data["groups"].append(group_data)
+
+        # Добавляем связи файлов с коллекциями
+        for link in file_group_links:
+            link_data = {
+                "file_id": str(link.file_id),
+                "group_id": str(link.group_id),
+            }
+            backup_data["file_group_links"].append(link_data)
+
         return backup_data
 
     def _prepare_full_backup_data(
@@ -159,6 +206,9 @@ class BackupService:
         files: List[DBFile],
         tags: List[Tag],
         categories: List[Category],
+        groups: List[Group],
+        group_members: List[GroupMember],
+        file_group_links: List # Список кортежей (file_id, group_id)
     ) -> Dict[str, Any]:
         """Подготавливает данные для полного бэкапа"""
         backup_data = {
@@ -168,6 +218,9 @@ class BackupService:
             "files": [],
             "tags": [],
             "categories": [],
+            "groups": [],
+            "group_members": [],
+            "file_group_links": [], # Новые данные
         }
 
         # Добавляем пользователей
@@ -202,7 +255,7 @@ class BackupService:
                 "thumbnail_path": file.thumbnail_path,
                 "preview_path": file.preview_path,
                 "description": file.description,
-                "tags": file.tags,
+                "tags": [str(tid) for tid in file.tags], # Конвертируем в строки
                 "category_id": str(file.category_id) if file.category_id else None,
                 "owner_id": str(file.owner_id),
                 "owner_username": owner_username,  # Используем username для сопоставления
@@ -210,6 +263,8 @@ class BackupService:
                 "updated_at": str(file.updated_at),
                 "transcoding_status": file.transcoding_status,
                 "duration": file.duration,
+                "hls_manifest_path": file.hls_manifest_path,
+                "dash_manifest_path": file.dash_manifest_path,
             }
             backup_data["files"].append(file_data)
 
@@ -234,6 +289,40 @@ class BackupService:
                 "created_at": str(category.created_at),
             }
             backup_data["categories"].append(category_data)
+
+        # Добавляем коллекции
+        for group in groups:
+            group_data = {
+                "id": str(group.id),
+                "name": group.name,
+                "description": group.description,
+                "creator_id": str(group.creator_id),
+                "access_level": group.access_level, # Уровень доступа может быть неактуален, но сохраняем
+                "created_at": str(group.created_at),
+                "updated_at": str(group.updated_at),
+            }
+            backup_data["groups"].append(group_data)
+
+        # Добавляем участников коллекций
+        for member in group_members:
+            member_data = {
+                "user_id": str(member.user_id),
+                "group_id": str(member.group_id),
+                "role": member.role,
+                "invited_by": str(member.invited_by) if member.invited_by else None,
+                "invited_at": str(member.invited_at),
+                "accepted_at": str(member.accepted_at) if member.accepted_at else None,
+                "revoked_at": str(member.revoked_at) if member.revoked_at else None,
+            }
+            backup_data["group_members"].append(member_data)
+
+        # Добавляем связи файлов с коллекциями
+        for link in file_group_links:
+            link_data = {
+                "file_id": str(link.file_id),
+                "group_id": str(link.group_id),
+            }
+            backup_data["file_group_links"].append(link_data)
 
         return backup_data
 
@@ -359,10 +448,35 @@ class BackupService:
 
                 # Восстанавливаем данные
                 with get_db_session() as db:
-                    # Для полного бэкапа восстанавливаем пользователей
+                    # Создаём маппинг из бэкапа в текущую БД
+                    backup_user_id_to_db_user_id = {}
+                    backup_file_id_to_db_file_id = {} # Новый маппинг для файлов
+                    backup_group_id_to_db_group_id = {} # Новый маппинг для групп
+                    # Заполняем из существующих пользователей
+                    existing_users = db.query(User).all()
+                    for u in existing_users:
+                        backup_user_id_to_db_user_id[str(u.id)] = u.id # Если backup_data содержит ID, сопоставляем с собой
+
+                    # Для full backup восстанавливаем пользователей
                     if backup_type == "full":
-                        restored_files += self._restore_users(
-                            db, backup_data.get("users", [])
+                        restored_users_backup_data = backup_data.get("users", [])
+                        restored_user_count = self._restore_users(
+                            db, restored_users_backup_data, backup_user_id_to_db_user_id
+                        )
+                        # _restore_users теперь обновляет маппинг
+                    else: # user backup
+                        # Для user backup, добавим маппинг для текущего пользователя
+                        backup_user_id_to_db_user_id[backup_data.get("user_id", str(current_user.id))] = current_user.id
+
+                    # Восстанавливаем коллекции
+                    restored_files += self._restore_groups(
+                        db, backup_data.get("groups", []), current_user, backup_type, backup_user_id_to_db_user_id, backup_group_id_to_db_group_id
+                    )
+
+                    # Восстанавливаем участников коллекций
+                    if backup_type == "full":
+                        self._restore_group_members(
+                            db, backup_data.get("group_members", []), backup_user_id_to_db_user_id, backup_group_id_to_db_group_id
                         )
 
                     # Восстанавливаем категории
@@ -375,19 +489,14 @@ class BackupService:
                         db, backup_data.get("tags", [])
                     )
 
-                    # Создаем mapping username -> user_id для текущего состояния БД
-                    username_to_id = {}
-                    if backup_type == "full":
-                        # Для полного бэкапа используем восстановленных или существующих пользователей
-                        users = db.query(User).all()
-                        username_to_id = {user.username: str(user.id) for user in users}
-                    else:
-                        # Для пользовательского бэкапа используем текущего пользователя
-                        username_to_id = {current_user.username: str(current_user.id)}
-
                     # Восстанавливаем файлы
                     restored_files += await self._restore_files(
-                        db, backup_data.get("files", []), temp_dir, current_user, backup_type, username_to_id
+                        db, backup_data.get("files", []), temp_dir, current_user, backup_type, backup_user_id_to_db_user_id, backup_file_id_to_db_file_id
+                    )
+
+                    # Восстанавливаем связи файлов с коллекциями
+                    self._restore_file_group_links(
+                        db, backup_data.get("file_group_links", []), backup_file_id_to_db_file_id, backup_group_id_to_db_group_id
                     )
 
                     db.commit()
@@ -407,8 +516,8 @@ class BackupService:
                 status_code=500, detail=f"Backup restore failed: {str(e)}"
             )
 
-    def _restore_users(self, db, users_data: List[Dict]) -> int:
-        """Восстанавливает пользователей (только для полного бэкапа)"""
+    def _restore_users(self, db, users_data: List[Dict], backup_user_id_to_db_user_id: Dict[str, uuid.UUID]) -> int:
+        """Восстанавливает пользователей (только для полного бэкапа) и обновляет маппинг"""
         restored_count = 0
         for user_data in users_data:
             # Проверяем, существует ли пользователь с таким email или username
@@ -429,8 +538,94 @@ class BackupService:
                     updated_at=user_data["updated_at"],
                 )
                 db.add(new_user)
+                # Обновляем маппинг: ID из бэкапа -> ID в текущей БД (новый UUID)
+                backup_user_id_to_db_user_id[user_data["id"]] = new_user.id
                 restored_count += 1
+            else:
+                # Если пользователь существует, всё равно обновляем маппинг: ID из бэкапа -> ID в текущей БД
+                backup_user_id_to_db_user_id[user_data["id"]] = existing_user.id
         return restored_count
+
+    def _restore_groups(self, db, groups_data: List[Dict], current_user: User, backup_type: str, backup_user_id_to_db_user_id: Dict[str, uuid.UUID], backup_group_id_to_db_group_id: Dict[str, uuid.UUID]) -> int:
+        """Восстанавливает коллекции (группы)"""
+        restored_count = 0
+        for group_data in groups_data:
+            # Проверяем, существует ли коллекция
+            existing_group = db.query(Group).filter(Group.id == group_data["id"]).first()
+            if not existing_group:
+                # Получаем creator_id из бэкапа
+                backup_creator_id_str = group_data["creator_id"]
+                # Используем маппинг, чтобы найти ID в текущей БД
+                db_creator_id = backup_user_id_to_db_user_id.get(backup_creator_id_str)
+
+                if not db_creator_id:
+                    # Если не найден в маппинге, проверим, существует ли пользователь с этим ID напрямую в БД (на всякий случай)
+                    direct_user_check = db.query(User).filter(User.id == uuid.UUID(backup_creator_id_str)).first()
+                    if direct_user_check:
+                        # Если нашли, добавим в маппинг и используем
+                        backup_user_id_to_db_user_id[backup_creator_id_str] = direct_user_check.id
+                        db_creator_id = direct_user_check.id
+                    else:
+                        print(f"Warning: Creator {backup_creator_id_str} for group {group_data['id']} does not exist in backup mapping or DB. Skipping group.")
+                        continue
+
+                # Создаём новую группу
+                new_group = Group(
+                    id=uuid.UUID(group_data["id"]),
+                    name=group_data["name"],
+                    description=group_data["description"],
+                    creator_id=db_creator_id, # Используем ID из текущей БД
+                    # access_level не используется как поле в модели Group, но сохранено в бэкапе
+                    # его можно восстановить, если потребуется, но сейчас игнорируем
+                    # access_level=group_data.get("access_level", "reader"),
+                )
+                db.add(new_group)
+                # Обновляем маппинг: ID группы из бэкапа -> ID новой группы в БД
+                backup_group_id_to_db_group_id[group_data["id"]] = new_group.id
+                restored_count += 1
+            else:
+                # Если группа уже существует, всё равно обновляем маппинг: ID из бэкапа -> ID в текущей БД
+                backup_group_id_to_db_group_id[group_data["id"]] = existing_group.id
+        return restored_count
+
+    def _restore_group_members(self, db, members_data: List[Dict], backup_user_id_to_db_user_id: Dict[str, uuid.UUID], backup_group_id_to_db_group_id: Dict[str, uuid.UUID]):
+        """Восстанавливает участников коллекций (только для полного бэкапа)"""
+        for member_data in members_data:
+            # Проверяем, существует ли связь
+            existing_member = db.query(GroupMember).filter(
+                GroupMember.user_id == member_data["user_id"],
+                GroupMember.group_id == member_data["group_id"]
+            ).first()
+            if not existing_member:
+                # Получаем user_id и group_id из бэкапа
+                backup_user_id_str = member_data["user_id"]
+                backup_group_id_str = member_data["group_id"]
+                # Используем маппинг, чтобы найти ID в текущей БД
+                db_user_id = backup_user_id_to_db_user_id.get(backup_user_id_str)
+                # Используем маппинг для группы
+                db_group_id = backup_group_id_to_db_group_id.get(backup_group_id_str)
+
+                if not db_user_id:
+                    print(f"Warning: User {backup_user_id_str} for group member does not exist in backup mapping. Skipping member.")
+                    continue
+                if not db_group_id:
+                    print(f"Warning: Group {backup_group_id_str} for group member does not exist in backup mapping. Skipping member.")
+                    continue
+
+                # Проверяем, существуют ли пользователь и группа в БД
+                user_exists = db.query(User).filter(User.id == db_user_id).first() is not None
+                group_exists = db.query(Group).filter(Group.id == db_group_id).first() is not None
+                if user_exists and group_exists:
+                    new_member = GroupMember(
+                        user_id=db_user_id,
+                        group_id=db_group_id,
+                        role=member_data["role"],
+                        invited_by=uuid.UUID(member_data["invited_by"]) if member_data.get("invited_by") else None,
+                        invited_at=member_data["invited_at"],
+                        accepted_at=member_data["accepted_at"],
+                        revoked_at=member_data["revoked_at"],
+                    )
+                    db.add(new_member)
 
     def _restore_categories(self, db, categories_data: List[Dict]) -> int:
         """Восстанавливает категории"""
@@ -487,7 +682,7 @@ class BackupService:
         return restored_count
 
     async def _restore_files(
-        self, db, files_data: List[Dict], temp_dir: str, current_user: User, backup_type: str, username_to_id: Dict[str, str]
+        self, db, files_data: List[Dict], temp_dir: str, current_user: User, backup_type: str, backup_user_id_to_db_user_id: Dict[str, uuid.UUID], backup_file_id_to_db_file_id: Dict[str, uuid.UUID]
     ) -> int:
         """Восстанавливает файлы"""
         restored_count = 0
@@ -505,22 +700,35 @@ class BackupService:
                     # Определяем владельца файла
                     if backup_type == "user":
                         # Для пользовательского бэкапа все файлы принадлежат текущему пользователю
-                        owner_id = current_user.id
-                    else:
-                        # Для полного бэкапа ищем пользователя по username
-                        owner_id_str = username_to_id.get(owner_username)
-                        if owner_id_str:
-                            owner_id = uuid.UUID(owner_id_str)
+                        # Используем маппинг, но если owner_id из бэкапа - это current_user.id, то db_owner_id = current_user.id
+                        backup_owner_id_str = file_data["owner_id"]
+                        if backup_owner_id_str == str(current_user.id):
+                             db_owner_id = current_user.id
                         else:
+                            # Если файл в user backup принадлежит не текущему пользователю, это ошибка
+                            print(f"Warning (User Backup): File {file_data.get('id', 'unknown')} owner mismatch. Skipping.")
+                            continue
+                    else: # backup_type == "full"
+                        # Для полного бэкапа ищем пользователя по backup_user_id_to_db_user_id
+                        backup_owner_id_str = file_data["owner_id"]
+                        db_owner_id = backup_user_id_to_db_user_id.get(backup_owner_id_str)
+                        if not db_owner_id:
                             # Если пользователь не найден, пропускаем файл
+                            print(f"Warning (Full Backup): Owner {backup_owner_id_str} for file {file_data.get('id', 'unknown')} does not exist in backup mapping. Skipping file.")
                             continue
                     
                     # Ищем файл в распакованном архиве и восстанавливаем его
                     file_restored = await self._restore_single_file(
-                        db, file_data, temp_dir, owner_id
+                        db, file_data, temp_dir, db_owner_id
                     )
                     if file_restored:
+                        # Обновляем маппинг: ID файла из бэкапа -> ID нового файла в БД
+                        # Предполагаем, что файл был создан с ID из бэкапа (если он не существовал в БД)
+                        backup_file_id_to_db_file_id[file_data["id"]] = uuid.UUID(file_data["id"])
                         restored_count += 1
+                else:
+                    # Если файл уже существует, всё равно обновляем маппинг: ID из бэкапа -> ID в текущей БД
+                    backup_file_id_to_db_file_id[file_data["id"]] = existing_file.id
 
             except Exception as e:
                 print(
@@ -597,6 +805,7 @@ class BackupService:
         preview_uploaded = False
         transcoded_uploaded = False # Флаг для транскодированных файлов
         hls_manifest_path_restored = file_data.get("hls_manifest_path") # Изначально предполагаем путь из бэкапа
+        dash_manifest_path_restored = file_data.get("dash_manifest_path")
 
         if file_content:
             try:
@@ -664,6 +873,25 @@ class BackupService:
                 print(f"Warning: Could not restore transcoded files for {file_data.get('id', 'unknown')}: {str(e)}")
                 # Не прерываем восстановление основного файла из-за ошибки транскодирования
 
+        # Проверяем, есть ли папка с DASH файлами в распакованном архиве
+        dash_source_dir = os.path.join(temp_dir, "transcoded", file_data['id'], "dash")
+        if os.path.exists(dash_source_dir):
+            try:
+                base_s3_path = f"transcoded/{file_data['id']}"
+                s3_dash_path = f"{base_s3_path}/dash"
+
+                for filename in os.listdir(dash_source_dir):
+                    local_file_path = os.path.join(dash_source_dir, filename)
+                    if os.path.isfile(local_file_path):
+                        s3_key = f"{s3_dash_path}/{filename}"
+                        s3_client.upload_file(local_file_path, settings.AWS_S3_BUCKET_NAME, s3_key)
+
+                transcoded_uploaded = True
+                dash_manifest_path_restored = f"{base_s3_path}/dash/manifest.mpd"
+
+            except Exception as e:
+                print(f"Warning: Could not restore DASH files for {file_data.get('id', 'unknown')}: {str(e)}")
+
         # Создаем запись в БД только если основной файл успешно загружен
         if file_uploaded:
             # Обрабатываем category_id
@@ -674,7 +902,7 @@ class BackupService:
                 except (ValueError, TypeError):
                     category_id = None
             new_file = DBFile(
-                id=uuid.UUID(file_data["id"]),
+                id=uuid.UUID(file_data["id"]), # Используем ID из бэкапа
                 original_name=file_data["original_name"],
                 mime_type=file_data["mime_type"],
                 file_path=file_data["file_path"],
@@ -686,16 +914,52 @@ class BackupService:
                 if preview_uploaded
                 else None,
                 hls_manifest_path=hls_manifest_path_restored if transcoded_uploaded else None,
+                dash_manifest_path=dash_manifest_path_restored if transcoded_uploaded else None,
                 transcoding_status=file_data.get("transcoding_status") or "not_started",
                 duration=file_data.get("duration") or None,
                 description=file_data.get("description"),
-                tags=file_data["tags"],
+                tags=file_data["tags"], # Оставляем теги как список строк, как они были в бэкапе
                 category_id=category_id,
-                owner_id=owner_id,  # Используем правильный owner_id
+                owner_id=owner_id,  # Используем правильный owner_id (uuid.UUID)
                 created_at=file_data["created_at"],
                 updated_at=file_data["updated_at"],
             )
             db.add(new_file)
+            # db.commit() не вызываем здесь, так как это делается в restore_backup
             return True
 
         return False
+
+    def _restore_file_group_links(self, db, links_data: List[Dict], backup_file_id_to_db_file_id: Dict[str, uuid.UUID], backup_group_id_to_db_group_id: Dict[str, uuid.UUID]):
+        """Восстанавливает связи файлов с коллекциями"""
+        for link_data in links_data:
+            backup_file_id_str = link_data["file_id"]
+            backup_group_id_str = link_data["group_id"]
+
+            # Используем маппинги для получения ID в текущей БД
+            db_file_id = backup_file_id_to_db_file_id.get(backup_file_id_str)
+            db_group_id = backup_group_id_to_db_group_id.get(backup_group_id_str)
+
+            if not db_file_id or not db_group_id:
+                # Если ID не найдены в маппингах, значит файл или группа не были восстановлены
+                print(f"Warning: File {backup_file_id_str} or Group {backup_group_id_str} does not exist in backup mapping. Skipping link.")
+                continue
+
+            # Проверяем, существуют ли файл и коллекция в БД с этими новыми ID
+            file_exists = db.query(DBFile).filter(DBFile.id == db_file_id).first() is not None
+            group_exists = db.query(Group).filter(Group.id == db_group_id).first() is not None
+
+            if not file_exists or not group_exists:
+                # Если файл или коллекция не существуют, пропускаем связь
+                print(f"Warning: File {db_file_id} (from {backup_file_id_str}) or Group {db_group_id} (from {backup_group_id_str}) does not exist in DB. Skipping link.")
+                continue
+
+            # Проверяем, существует ли уже такая связь
+            existing_link = db.query(file_group).filter(
+                file_group.c.file_id == db_file_id,
+                file_group.c.group_id == db_group_id
+            ).first()
+
+            if not existing_link:
+                # Создаём новую связь
+                db.execute(file_group.insert().values(file_id=db_file_id, group_id=db_group_id))

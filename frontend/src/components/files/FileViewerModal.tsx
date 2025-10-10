@@ -58,10 +58,11 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mediaNatural, setMediaNatural] = useState({ width: 800, height: 600 });
   const [videoNatural, setVideoNatural] = useState({ width: 800, height: 450 });
+  // Состояние для отслеживания, нужно ли использовать HLS
+  const [shouldUseHls, setShouldUseHls] = useState(true);
   // Для двойного клика
   const [lastClickTime, setLastClickTime] = useState(0);
   const [lastClickPosition, setLastClickPosition] = useState({ x: 0, y: 0 });
-
   // --- HLS STATE ---
   const hlsRef = useRef<Hls | null>(null); // Реф для экземпляра Hls
 
@@ -133,95 +134,177 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     const video = videoRef.current;
     const fileUrl = getFileUrl(); // Получаем правильный URL
 
+    // Флаг для отслеживания, уничтожен ли текущий эффект
+    let isMounted = true;
+
     if (isVideo && video) {
-      // Проверяем, поддерживает ли браузер нативно HLS (Safari)
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Нативная поддержка HLS
-        console.log("Using native HLS support");
-        video.src = fileUrl;
-      } else if (Hls.isSupported()) {
-        // Поддержка через Hls.js
-        console.log("Using Hls.js");
-        const hls = new Hls({
-            // Дополнительные опции Hls.js
-            // enableWorker: true,
-            // lowLatencyMode: true,
-            // backBufferLength: 90 // Секунды буфера назад
-            // --- НАСТРОЙКА ДЛЯ ОТПРАВКИ CREDENTIALS ---
+      // --- ИЗМЕНЕНИЕ: Проверяем, является ли URL HLS-манифестом и нужно ли использовать HLS ---
+      const isHlsManifest = fileUrl.includes('/manifest/hls/') && shouldUseHls;
+
+      if (isHlsManifest) {
+        // --- HLS ВОСПРОИЗВЕДЕНИЕ ---
+        // Проверяем, поддерживает ли браузер нативно HLS (Safari)
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          // Нативная поддержка HLS
+          console.log("Using native HLS support for manifest:", fileUrl);
+          video.src = fileUrl;
+
+          // --- ДОБАВЛЕНО: Обработка ошибок для нативного HLS ---
+          const handleVideoError = () => {
+            if (!isMounted) return; // Проверяем, жив ли эффект
+            console.error("Native HLS playback failed, falling back to direct streaming.");
+            setShouldUseHls(false); // Устанавливаем состояние для отката
+          };
+
+          video.addEventListener('error', handleVideoError);
+
+          // Очистка
+          return () => {
+            isMounted = false; // Устанавливаем флаг при очистке
+            video.removeEventListener('error', handleVideoError);
+            if (hlsRef.current) {
+              console.log("Destroying HLS instance in cleanup");
+              hlsRef.current.destroy();
+              hlsRef.current = null;
+            }
+            if(video) {
+              video.src = '';
+              video.load();
+            }
+          };
+
+        } else if (Hls.isSupported()) {
+          // Поддержка через Hls.js
+          console.log("Using Hls.js for manifest:", fileUrl);
+
+          // Уничтожаем предыдущий экземпляр, если он есть (и он не был уничтожен ранее)
+          if (hlsRef.current) {
+            console.log("Destroying previous HLS instance in effect");
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+          }
+
+          // Создаем новый экземпляр Hls
+          const hls = new Hls({
             xhrSetup: function(xhr: XMLHttpRequest) {
-              // Указываем, что нужно отправлять cookies с каждым XHR запросом
-              // Это аналогично withCredentials: true в fetch
               xhr.withCredentials = true;
-            }
-            // --- КОНЕЦ НАСТРОЙКИ CREDENTIALS ---
-        });
-        hlsRef.current = hls; // Сохраняем ссылку на экземпляр
+            },
+            // ДОБАВЛЕНО: Настройки для лучшей обработки ошибок
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 90
+          });
+          hlsRef.current = hls; // Сохраняем в ref
 
-        hls.loadSource(fileUrl); // Загружаем манифест
-        hls.attachMedia(video);  // Привязываем к элементу video
+          hls.loadSource(fileUrl);
+          hls.attachMedia(video);
 
-        // Обработка событий Hls.js (опционально, для отладки)
-        hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+          hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+            if (!isMounted) return; // Проверяем, жив ли эффект
             console.log("HLS Manifest parsed", data);
-            // Можно автоматически начать воспроизведение
-            // video.play().catch(e => console.error("Autoplay failed:", e));
-        });
+          });
 
-        hls.on(Hls.Events.ERROR, (event, data) => {
-            console.error("HLS Error:", event, data);
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            if (!isMounted) return; // Проверяем, жив ли эффект
+            console.error("HLS Error:", data.type, data.details, data.fatal);
+            
             if (data.fatal) {
-                switch(data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        // Попробуйте перезагрузить манифест
-                        console.log("Fatal network error encountered, try to recover");
-                        hls.startLoad();
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        console.log("Fatal media error encountered, try to recover");
-                        hls.recoverMediaError();
-                        break;
-                    default:
-                        // Невосстановимая ошибка
-                        console.log("Fatal error encountered, destroying HLS instance");
-                        hls.destroy();
-                        break;
-                }
+              switch(data.details) {
+                case Hls.ErrorDetails.MANIFEST_LOAD_ERROR:
+                case Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT:
+                case Hls.ErrorDetails.MANIFEST_PARSING_ERROR:
+                  console.log("Fatal HLS manifest error, falling back to direct streaming");
+                  // ИЗМЕНЕНИЕ: Не уничтожаем HLS сразу, а только отключаем HLS
+                  setShouldUseHls(false);
+                  break;
+                case Hls.ErrorDetails.LEVEL_LOAD_ERROR:
+                case Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT:
+                  console.log("Fatal HLS level error, trying to recover");
+                  hls.startLoad();
+                  break;
+                case Hls.ErrorDetails.FRAG_LOAD_ERROR:
+                case Hls.ErrorDetails.FRAG_LOAD_TIMEOUT:
+                  console.log("Fatal HLS fragment error, trying to recover");
+                  hls.startLoad();
+                  break;
+                default:
+                  console.log("Fatal HLS error, falling back to direct streaming");
+                  setShouldUseHls(false);
+                  break;
+              }
             }
-        });
+          });
 
-      } else {
-        // Браузер не поддерживает HLS ни нативно, ни через Hls.js
-        console.error("HLS is not supported in this browser");
-        // Можно показать сообщение пользователю или попробовать другой метод
-        // Например, использовать старый стриминг, если файл не транскодирован
-        if(file.transcoding_status !== 'completed') {
-             video.src = fileUrl; // Используем старый стриминг как запасной вариант
+          // --- ОЧИСТКА ---
+          return () => {
+            isMounted = false; // Устанавливаем флаг при очистке
+            if (hlsRef.current && hlsRef.current === hls) {
+              console.log("Destroying HLS instance in cleanup");
+              hlsRef.current.destroy();
+              hlsRef.current = null;
+            }
+          };
+
         } else {
-             // Сообщить пользователю о проблеме
-             console.warn("Video is transcoded but browser does not support HLS playback.");
+          // Браузер не поддерживает HLS, но файл транскодирован
+          console.error("HLS is not supported in this browser, but file is transcoded.");
+          setShouldUseHls(false); // Устанавливаем состояние для отката
+        }
+      } else {
+        // --- ОБЫЧНОЕ ВОСПРОИЗВЕДЕНИЕ (для /stream или других форматов) ---
+        // ИЗМЕНЕНИЕ: Всегда используем /stream endpoint для прямого воспроизведения
+        const streamUrl = `${API_BASE_URL}/files/${file.id}/stream`;
+        
+        // Проверяем, не установлен ли уже этот URL
+        if (video.src !== streamUrl) {
+          console.log("Using direct streaming:", streamUrl);
+          video.src = streamUrl;
+          
+          // ДОБАВЛЕНО: Обработка ошибок для прямого стриминга
+          const handleStreamError = () => {
+            if (!isMounted) return;
+            console.error("Direct streaming also failed for URL:", streamUrl);
+          };
+          
+          video.addEventListener('error', handleStreamError);
+          
+          return () => {
+            isMounted = false;
+            video.removeEventListener('error', handleStreamError);
+            if (video) {
+              video.src = '';
+              video.load();
+            }
+          };
         }
       }
     }
 
     // Очистка при размонтировании или смене файла
     return () => {
+      isMounted = false; // Устанавливаем флаг при очистке
       if (hlsRef.current) {
-        console.log("Destroying HLS instance");
+        console.log("Destroying HLS instance in main cleanup");
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      // Также сбросим src видео, чтобы избежать утечек
       if(video) {
         video.src = '';
         video.load(); // Сбросить состояние видео
       }
     };
-  }, [file.id, file.mime_type, file.transcoding_status, file.hls_manifest_path]); // Зависимости: важны для перезапуска при смене файла
+  }, [file.id, shouldUseHls]); // Зависимости: важны для перезапуска при смене файла или состояния HLS
+
+  // Эффект для сброса состояния при смене файла
+  useEffect(() => {
+    setShouldUseHls(true);
+  }, [file.id]);
 
   // Видео события
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+
     const handleTimeUpdate = () => setCurrentTime(video.currentTime);
     const handleLoadedMetadata = () => setDuration(video.duration);
     const handlePlay = () => setIsPlaying(true);
@@ -232,11 +315,13 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         video.play();
       }
     };
+
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
+
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -273,10 +358,12 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
     document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
@@ -337,6 +424,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         toggleFullscreen();
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, onPrev, onNext, hasNext, hasPrev, isImage, isVideo, isFullscreen]);
@@ -668,6 +756,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           <ChevronRight className="w-12 h-12" />
         </button>
       )}
+
       {/* Коробка: сетка [header | content | footer] */}
       <div
         ref={fullscreenContainerRef}
@@ -800,6 +889,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             </div>
           </div>
         )}
+
         {/* Контент (медиа) */}
         <div
           ref={mediaRef}
@@ -963,6 +1053,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
             </div>
           )}
         </div>
+
         {/* Footer - скрываем в полноэкранном режиме */}
         {!isFullscreen && (
           <div className="p-3 bg-gray-900/80 backdrop-blur-sm">

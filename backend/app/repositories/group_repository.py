@@ -4,6 +4,9 @@ from app.core.database import get_db_session
 from app.models.base import Group, GroupMember, File, User
 from app.models.base import file_group # Таблица связи файлов и групп
 from sqlalchemy.orm import joinedload 
+from sqlalchemy import and_, asc, desc, not_, or_, distinct
+from sqlalchemy.orm import joinedload, selectinload
+import uuid
 
 def create_group_db(group: Group) -> Group:
     with get_db_session() as db:
@@ -145,3 +148,50 @@ def get_group_members_db(group_id: str) -> List[GroupMember]:
             .all()
         )
         return members
+
+def get_group_id_by_file_id(file_id: str, user_id: str) -> str:
+    """
+    Находит ID группы, к которой принадлежит файл и в которой состоит пользователь.
+
+    Args:
+        file_id: ID файла.
+        user_id: ID пользователя.
+
+    Returns:
+        ID группы, если файл принадлежит хотя бы одной группе, в которой состоит пользователь.
+        None, если файл не принадлежит ни одной группе или пользователь не состоит ни в одной группе, содержащей файл.
+
+    Raises:
+        ValueError: Если file_id или user_id недействительны.
+        Exception: Для любых других внутренних ошибок.
+    """
+    with get_db_session() as db:
+        try:
+            # Выполняем JOIN между таблицами file_group, GroupMember, и groups
+            # для поиска групп, где файл связан с группой и пользователь состоит в этой группе.
+            # distinct() используется, чтобы избежать дубликатов, если бы файл был
+            # связан с одной группой несколько раз (хотя уникальный индекс этого не позволит).
+            result = (
+                db.query(distinct(file_group.c.group_id))
+                .join(
+                    GroupMember,
+                    and_(
+                        file_group.c.group_id == GroupMember.group_id,
+                        GroupMember.user_id == user_id # Фильтр по пользователю
+                    )
+                )
+                .filter(file_group.c.file_id == file_id) # Фильтр по файлу
+                .first()
+            )
+
+            if result:
+                # result - это кортеж, например, (UUID('...'),)
+                # Возвращаем первый элемент кортежа (ID группы) как строку
+                return str(result[0])
+            else:
+                # Возвращаем None, если связь не найдена
+                return None
+
+        except Exception as e:
+            print(f"Database error in get_group_id_by_file_id: {e}")
+            raise e

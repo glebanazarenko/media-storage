@@ -35,6 +35,8 @@ from app.services.file_service import (
     download_file_from_url_service,
 )
 from app.repositories.file_repository import get_file_by_id
+from app.repositories.group_repository import get_group_id_by_file_id, get_group_by_id_db
+from app.services.group_service import _check_user_can_read_group
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -157,6 +159,7 @@ def stream_file(
         print(f"S3 Client Error for file {file_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"S3 Client Error: {str(e)}")
     except HTTPException:
+        print(e)
         # Пробрасываем HTTP исключения без изменений
         raise
     except Exception as e:
@@ -176,9 +179,18 @@ def get_manifest(
         file = get_file_by_id(file_id)
         if not file:
             raise HTTPException(status_code=404, detail="File not found")
-        # Проверяем права доступа
-        if file.owner_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Access denied")
+
+        group_id = get_group_id_by_file_id(file_id, current_user.id)
+        if group_id:
+            group = get_group_by_id_db(group_id)
+            if not group:
+                raise HTTPException(status_code=404, detail="Group not found")
+            if not _check_user_can_read_group(group, current_user):
+                raise HTTPException(status_code=403, detail="Access denied to group")
+        else:
+            # Проверяем права доступа
+            if file.owner_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Access denied")
 
         # Определяем путь к манифесту в S3
         s3_manifest_key = None
@@ -235,7 +247,8 @@ def get_manifest(
             }
         )
 
-    except HTTPException:
+    except HTTPException as e:
+        print(e)
         raise
     except Exception as e:
          print(f"Unexpected error getting manifest {manifest_name} for file {file_id}: {e}")

@@ -14,28 +14,36 @@ backup_service = BackupService()
 @router.get("/download")
 def download_backup(current_user: User = Depends(get_current_user)):
     """Создает и возвращает бэкап всех файлов пользователя в формате ZIP"""
-    zip_buffer, filename = backup_service.create_backup(current_user)
+    try:
+        zip_buffer, filename = backup_service.create_backup(current_user)
 
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except Exception as e:
+        print(f"Backup error: {e}")
+        raise e
 
 
 @router.get("/download-full")
 def download_full_backup(current_user: User = Depends(get_current_user)):
     """Создает и возвращает полный бэкап всех данных (только для админов)"""
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Access denied. Admin rights required.")
-    
-    zip_buffer, filename = backup_service.create_full_backup(current_user)
+    try:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Access denied. Admin rights required.")
+        
+        zip_buffer, filename = backup_service.create_full_backup(current_user)
 
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except Exception as e:
+        print(f"Full backup error: {e}")
+        raise e
 
 
 @router.post("/upload", response_model=BackupUploadResponse)
@@ -44,5 +52,9 @@ async def upload_backup(
     current_user: User = Depends(get_current_user),
 ):
     """Восстанавливает данные из бэкап файла"""
-    result = await backup_service.restore_backup(backup_file, current_user)
-    return result
+    try:
+        result = await backup_service.restore_backup(backup_file, current_user)
+        return result
+    except Exception as e:
+        print(f"Upload backup error: {e}")
+        raise e

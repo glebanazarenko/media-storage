@@ -288,15 +288,16 @@ def _create_and_save_zip_to_s3(backup_data: dict, files: list, backup_type: str,
     timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
     if backup_type == "user":
         filename = f"backup_{current_user.username}_{timestamp}.zip"
-    else: # full
+    else:  # full
         filename = f"full_backup_all_users_{timestamp}.zip"
 
     # Ключ S3 для сохранения
-    s3_backup_key = f"backups/{filename}" # Папка backups в бакете
+    s3_backup_key = f"backups/{filename}"
 
-    zip_buffer = io.BytesIO()
-    with tempfile.TemporaryDirectory() as temp_dir:
-        zip_path = os.path.join(temp_dir, "backup.zip")
+    with tempfile.NamedTemporaryFile(delete=False) as temp_zip_file:
+        zip_path = temp_zip_file.name
+
+    try:
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
             json_data = json.dumps(backup_data, indent=2, ensure_ascii=False)
             zip_file.writestr("backup_metadata.json", json_data)
@@ -319,69 +320,67 @@ def _create_and_save_zip_to_s3(backup_data: dict, files: list, backup_type: str,
                             f"previews/{file.id}_preview.jpg", preview_content
                         )
 
-                    # Обработка транскодированных файлов (HLS)
+                    # HLS
                     if file.hls_manifest_path:
                         hls_s3_base_parts = file.hls_manifest_path.split('/')
                         if len(hls_s3_base_parts) >= 3:
                             hls_s3_base_key = '/'.join(hls_s3_base_parts[:-1]) + '/'
-                            hls_temp_dir = os.path.join(temp_dir, f"hls_files/{file.id}")
-                            os.makedirs(hls_temp_dir, exist_ok=True)
-                            try:
-                                paginator = s3_client.get_paginator('list_objects_v2')
-                                pages = paginator.paginate(Bucket=settings.AWS_S3_BUCKET_NAME, Prefix=hls_s3_base_key)
-                                for page in pages:
-                                    if 'Contents' in page:
-                                        for obj in page['Contents']:
-                                            s3_key = obj['Key']
-                                            relative_s3_key = s3_key[len(hls_s3_base_key):]
-                                            if relative_s3_key:
-                                                local_file_path = os.path.join(hls_temp_dir, relative_s3_key)
-                                                os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
-                                                s3_client.download_file(settings.AWS_S3_BUCKET_NAME, s3_key, local_file_path)
-                                                zip_arcname = f"transcoded/{file.id}/hls/{relative_s3_key}"
-                                                zip_file.write(local_file_path, arcname=zip_arcname)
-                            except ClientError as e:
-                                print(f"Warning: Could not backup transcoded files for {file.id}: {str(e)}")
+                            with tempfile.TemporaryDirectory() as hls_temp_dir:
+                                try:
+                                    paginator = s3_client.get_paginator('list_objects_v2')
+                                    pages = paginator.paginate(Bucket=settings.AWS_S3_BUCKET_NAME, Prefix=hls_s3_base_key)
+                                    for page in pages:
+                                        if 'Contents' in page:
+                                            for obj in page['Contents']:
+                                                s3_key = obj['Key']
+                                                relative_s3_key = s3_key[len(hls_s3_base_key):]
+                                                if relative_s3_key:
+                                                    local_file_path = os.path.join(hls_temp_dir, relative_s3_key)
+                                                    os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                                                    s3_client.download_file(settings.AWS_S3_BUCKET_NAME, s3_key, local_file_path)
+                                                    zip_arcname = f"transcoded/{file.id}/hls/{relative_s3_key}"
+                                                    zip_file.write(local_file_path, arcname=zip_arcname)
+                                except ClientError as e:
+                                    print(f"Warning: Could not backup HLS files for {file.id}: {str(e)}")
 
-                    # Обработка транскодированных файлов (DASH) - аналогично HLS
+                    # DASH
                     if file.dash_manifest_path:
                         dash_s3_base_parts = file.dash_manifest_path.split('/')
                         if len(dash_s3_base_parts) >= 3:
                             dash_s3_base_key = '/'.join(dash_s3_base_parts[:-1]) + '/'
-                            dash_temp_dir = os.path.join(temp_dir, f"dash_files/{file.id}")
-                            os.makedirs(dash_temp_dir, exist_ok=True)
-                            try:
-                                paginator = s3_client.get_paginator('list_objects_v2')
-                                pages = paginator.paginate(Bucket=settings.AWS_S3_BUCKET_NAME, Prefix=dash_s3_base_key)
-                                for page in pages:
-                                    if 'Contents' in page:
-                                        for obj in page['Contents']:
-                                            s3_key = obj['Key']
-                                            relative_s3_key = s3_key[len(dash_s3_base_key):]
-                                            if relative_s3_key:
-                                                local_file_path = os.path.join(dash_temp_dir, relative_s3_key)
-                                                os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
-                                                s3_client.download_file(settings.AWS_S3_BUCKET_NAME, s3_key, local_file_path)
-                                                zip_arcname = f"transcoded/{file.id}/dash/{relative_s3_key}"
-                                                zip_file.write(local_file_path, arcname=zip_arcname)
-                            except ClientError as e:
-                                print(f"Warning: Could not backup DASH files for {file.id}: {str(e)}")
+                            with tempfile.TemporaryDirectory() as dash_temp_dir:
+                                try:
+                                    paginator = s3_client.get_paginator('list_objects_v2')
+                                    pages = paginator.paginate(Bucket=settings.AWS_S3_BUCKET_NAME, Prefix=dash_s3_base_key)
+                                    for page in pages:
+                                        if 'Contents' in page:
+                                            for obj in page['Contents']:
+                                                s3_key = obj['Key']
+                                                relative_s3_key = s3_key[len(dash_s3_base_key):]
+                                                if relative_s3_key:
+                                                    local_file_path = os.path.join(dash_temp_dir, relative_s3_key)
+                                                    os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                                                    s3_client.download_file(settings.AWS_S3_BUCKET_NAME, s3_key, local_file_path)
+                                                    zip_arcname = f"transcoded/{file.id}/dash/{relative_s3_key}"
+                                                    zip_file.write(local_file_path, arcname=zip_arcname)
+                                except ClientError as e:
+                                    print(f"Warning: Could not backup DASH files for {file.id}: {str(e)}")
 
                 except Exception as e:
                     print(f"Warning: Could not backup file {file.id}: {str(e)}")
 
-        # Читаем созданный ZIP в буфер
+        # Загружаем ZIP-архив в S3 напрямую из файла
         with open(zip_path, 'rb') as f:
-            zip_buffer.write(f.read())
+            s3_client.put_object(
+                Bucket=settings.AWS_S3_BUCKET_NAME,
+                Key=s3_backup_key,
+                Body=f,
+                ContentType='application/zip'
+            )
 
-    # Загружаем ZIP-архив в S3
-    zip_buffer.seek(0)
-    s3_client.put_object(
-        Bucket=settings.AWS_S3_BUCKET_NAME,
-        Key=s3_backup_key,
-        Body=zip_buffer.getvalue(),
-        ContentType='application/zip'
-    )
+        print(f"Backup saved to S3: {s3_backup_key}")
+        return s3_backup_key
 
-    print(f"Backup saved to S3: {s3_backup_key}")
-    return s3_backup_key
+    finally:
+        # Удаляем временный файл
+        os.remove(zip_path)

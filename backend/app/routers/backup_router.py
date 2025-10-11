@@ -136,41 +136,67 @@ class BackupUploadResponse(BaseModel):
     task_id: str
 
 @router.post("/upload", response_model=BackupUploadResponse)
-async def upload_backup(
-    backup_file: UploadFile = File(...),
+def upload_backup(
+    backup_file: UploadFile = File(...), # Имя файла будет использоваться для построения пути в S3
     current_user: User = Depends(get_current_user),
 ):
     temp_file_path = None
-    s3_key = None
+    s3_key_to_use = None
+    should_delete_s3_key = False # Флаг, указывающий, нужно ли удалять файл из S3 после задачи
+
     try:
-        # Создаем временный файл для загруженного содержимого
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            # Читаем и записываем содержимое загруженного файла в локальный временный файл
-            import shutil
-            shutil.copyfileobj(backup_file.file, temp_file)
-            temp_file_path = temp_file.name
+        # Построим ожидаемый путь в S3 на основе имени файла
+        expected_s3_path = f"backups/{backup_file.filename}"
 
-        # Генерируем уникальный ключ для S3
-        unique_filename = f"{uuid.uuid4()}.zip"
-        s3_key = f"temp_backups/{unique_filename}"
+        # Проверяем, существует ли файл в S3 по этому пути
+        try:
+            s3_client.head_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=expected_s3_path)
+            # Если head_object не вызывает исключение, файл существует
+            s3_key_to_use = expected_s3_path
+            should_delete_s3_key = False # Не удаляем, так как он уже существовал
+            print(f"Using existing backup file from S3: {s3_key_to_use}") # Для отладки
+        except ClientError as e:
+            # Проверяем, действительно ли это "NoSuchKey"
+            error_code = e.response.get('Error', {}).get('Code')
+            if error_code == 'NoSuchKey' or error_code == '404':
+                # Файл не существует, загружаем новый
+                print(f"File {expected_s3_path} not found in S3. Uploading new file.") # Для отладки
 
-        # Загружаем файл в S3
-        with open(temp_file_path, 'rb') as f:
-            s3_client.put_object(
-                Bucket=settings.AWS_S3_BUCKET_NAME,
-                Key=s3_key,
-                Body=f,
-                ContentType='application/zip' # Указываем тип для ясности
-            )
+                # Создаем временный файл для загруженного содержимого
+                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                    # Читаем и записываем содержимое загруженного файла в локальный временный файл
+                    import shutil
+                    shutil.copyfileobj(backup_file.file, temp_file)
+                    temp_file_path = temp_file.name
 
-        print(f"Uploaded backup file to S3: {s3_key}") # Для отладки
+                # Генерируем уникальный ключ для S3 (или используем тот же путь, если хотите перезаписать)
+                # Для безопасности, лучше использовать уникальный ключ, но если вы хотите перезаписать:
+                # s3_key_to_use = expected_s3_path
+                # Или уникальный ключ:
+                unique_filename = f"{uuid.uuid4()}.zip"
+                s3_key_to_use = f"temp_backups/{unique_filename}"
 
-        # Удаляем локальный временный файл, т.к. он теперь в S3
-        os.unlink(temp_file_path)
-        temp_file_path = None # Убираем ссылку
+                # Загружаем файл в S3
+                with open(temp_file_path, 'rb') as f:
+                    s3_client.put_object(
+                        Bucket=settings.AWS_S3_BUCKET_NAME,
+                        Key=s3_key_to_use,
+                        Body=f,
+                        ContentType='application/zip' # Указываем тип для ясности
+                    )
 
-        # Отправляем задачу Celery, передавая S3 ключ вместо локального пути
-        task_id = restore_backup_task.delay(s3_key, str(current_user.id))
+                should_delete_s3_key = True # Удаляем, так как это временный файл, созданный сейчас
+                print(f"Uploaded new backup file to S3: {s3_key_to_use}") # Для отладки
+
+                # Удаляем локальный временный файл, т.к. он теперь в S3
+                os.unlink(temp_file_path)
+                temp_file_path = None # Убираем ссылку
+            else:
+                # Это другая ошибка S3, не 'NoSuchKey', пробрасываем её
+                raise e
+
+        # Отправляем задачу Celery, передавая S3 ключ и флаг удаления
+        task_id = restore_backup_task.delay(s3_key_to_use, str(current_user.id), should_delete_s3_key)
 
         return {"message": "Backup upload accepted", "task_id": str(task_id)}
 
@@ -178,19 +204,22 @@ async def upload_backup(
         # Если это уже HTTPException, просто пробрасываем её
         raise
     except Exception as e:
-        # Если произошла ошибка, удаляем локальный файл (если он есть) и S3 объект (если он был создан)
+        # Если произошла ошибка, удаляем локальный файл (если он есть)
+        # и S3 объект (если он был *создан* в этой функции и флаг указывает на удаление)
         if temp_file_path and os.path.exists(temp_file_path):
             try:
                 os.unlink(temp_file_path)
                 print(f"Cleaned up temp file after error: {temp_file_path}")
             except OSError as cleanup_error:
                 print(f"Warning: Could not clean up temp file {temp_file_path}: {cleanup_error}")
-        
-        if s3_key: # Если S3 ключ был сгенерирован
+
+        # Удаляем S3 объект только если он был *создан* в этой функции (should_delete_s3_key == True)
+        # и *не* если он существовал до этого.
+        if s3_key_to_use and should_delete_s3_key:
             try:
-                s3_client.delete_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
-                print(f"Cleaned up S3 temp file after error: {s3_key}")
+                s3_client.delete_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key_to_use)
+                print(f"Cleaned up S3 temp file after error: {s3_key_to_use}")
             except Exception as s3_cleanup_error:
-                print(f"Warning: Could not clean up S3 temp file {s3_key}: {s3_cleanup_error}")
+                print(f"Warning: Could not clean up S3 temp file {s3_key_to_use}: {s3_cleanup_error}")
 
         raise HTTPException(status_code=500, detail=f"Backup upload failed: {str(e)}")

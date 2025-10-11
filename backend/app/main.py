@@ -43,6 +43,16 @@ app.include_router(tag_router.router)
 app.include_router(backup_router.router)
 app.include_router(user_router.router)
 
+from celery import Celery
+from app.core.config import settings
+
+celery_app = Celery('myapp')
+celery_app.conf.broker_url = settings.CELERY_BROKER_URL
+celery_app.conf.result_backend = settings.CELERY_RESULT_BACKEND
+
+# Автоматически искать задачи в пакете app.tasks
+celery_app.autodiscover_tasks(['app.tasks'])
+
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

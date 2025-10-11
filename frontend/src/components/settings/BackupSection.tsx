@@ -31,7 +31,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
 
   // Состояния для опроса статуса
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
-  const [currentTaskType, setCurrentTaskType] = useState<'user' | 'full' | null>(null);
+  const [currentTaskType, setCurrentTaskType] = useState<'user' | 'full' | 'restore' | null>(null);
   const [pollingStatus, setPollingStatus] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -160,16 +160,72 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     formData.append('backup_file', file);
 
     try {
+      // Теперь сервер возвращает { task_id: string, message: string }
       const response = await backUpAPI.restoreBackup(formData);
-      
-      setRestoreSuccess(t('backup.restoreSuccessMessage', { restored_files: response.data.restored_files }));
+      const taskId = response.data.task_id;
+
+      // Начинаем опрос статуса задачи
+      startRestorePolling(taskId);
     } catch (error: any) {
       console.error('Restore error:', error);
       setRestoreError(t('backup.restoreError'));
-    } finally {
       setRestoreLoading(false);
       event.target.value = '';
     }
+  };
+
+  const startRestorePolling = (taskId: string) => {
+    setCurrentTaskId(taskId);
+    setCurrentTaskType('restore'); // Добавляем тип задачи
+    setPollingStatus(true);
+    setRestoreError('');
+    setRestoreSuccess('');
+
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await backUpAPI.getBackupStatus(taskId);
+        const data: BackupStatusResponse = response.data;
+
+        if (data.status === 'completed') {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          setPollingStatus(false);
+          setCurrentTaskId(null);
+          setCurrentTaskType(null);
+          setRestoreLoading(false);
+          setRestoreSuccess(
+            t('backup.restoreSuccessMessage', { restored_files: data.message?.restored_files || 'unknown' })
+          );
+        } else if (data.status === 'failed') {
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+          setPollingStatus(false);
+          setCurrentTaskId(null);
+          setCurrentTaskType(null);
+          setRestoreLoading(false);
+          setRestoreError(t('backup.restoreError') + (data.error ? ` (${data.error})` : ''));
+        }
+      } catch (error: any) {
+        console.error('Error polling restore status:', error);
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        setPollingStatus(false);
+        setCurrentTaskId(null);
+        setCurrentTaskType(null);
+        setRestoreLoading(false);
+        setRestoreError(t('backup.restoreError'));
+      }
+    }, 5000);
   };
 
   // Функция для отмены опроса вручную (опционально)
@@ -360,6 +416,18 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
               <p className="text-yellow-400">• {t('backup.adminRestore')}</p>
             )}
           </div>
+
+          {pollingStatus && currentTaskType === 'restore' && (
+            <div className="bg-blue-500/20 border border-blue-500/50 text-blue-200 px-3 py-2 rounded text-sm mt-2">
+              {t('backup.restoringMessage')} {/* Добавьте в i18n */}
+              <button
+                onClick={handleCancelPolling}
+                className="ml-2 text-xs text-blue-300 hover:text-white underline"
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          )}
 
           {restoreSuccess && (
             <div className="bg-green-500/20 border border-green-500/50 text-green-200 px-3 py-2 rounded text-sm mt-3">

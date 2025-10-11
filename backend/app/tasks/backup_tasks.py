@@ -6,15 +6,10 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 from botocore.exceptions import ClientError
-from celery import Celery
+from app.celery_app import celery_app
 from app.core.config import settings
 from app.core.database import get_db_session, s3_client
 from app.models.base import Category, File as DBFile, Tag, User, Group, GroupMember, file_group # Импортируем таблицу связи
-
-# Инициализация Celery (настройте URL брокера, например, Redis)
-celery_app = Celery('backup_tasks')
-celery_app.conf.broker_url = settings.CELERY_BROKER_URL # Добавьте CELERY_BROKER_URL в config.py
-celery_app.conf.result_backend = settings.CELERY_RESULT_BACKEND # Добавьте CELERY_RESULT_BACKEND в config.py,
 
 
 @celery_app.task(bind=True)

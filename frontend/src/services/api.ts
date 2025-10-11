@@ -231,7 +231,6 @@ export const backUpAPI = {
     // или используем window.location.assign
     return `${API_BASE_URL}/backup/download-task/${taskId}`;
   },
-  // Старый метод восстановления остается без изменений
   restoreBackup: (formData: FormData) => {
     return api.post('/backup/upload', formData, {
       headers: {

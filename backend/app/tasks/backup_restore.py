@@ -15,41 +15,54 @@ from app.models.base import file_group # Импортируем таблицу �
 from app.core.config import settings # Добавьте импорт settings
 
 @celery_app.task(bind=True)
-def restore_backup_task(self, temp_file_path: str, user_id: str):
-    # Проверяем, существует ли файл перед началом работы
-    if not os.path.exists(temp_file_path):
-        error_msg = f"Backup file does not exist: {temp_file_path}"
-        print(error_msg)
-        # Возвращаем ошибку, чтобы фронтенд мог обработать её
-        return {"error": error_msg, "message": "Backup file not found"}
-
+def restore_backup_task(self, s3_key: str, user_id: str):
+    local_temp_file_path = None
     try:
-        print(f"Starting restore task for file: {temp_file_path}") # Для отладки
+        print(f"Starting restore task for S3 key: {s3_key}") # Для отладки
+
+        # Скачиваем файл из S3 в локальный временный файл
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            # Получаем объект из S3
+            response = s3_client.get_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
+            # Читаем содержимое
+            file_content = response['Body'].read()
+            # Записываем в локальный временный файл
+            temp_file.write(file_content)
+            local_temp_file_path = temp_file.name
+
+        print(f"Downloaded S3 file {s3_key} to local temp file: {local_temp_file_path}") # Для отладки
+
+        # Теперь вызываем основную логику восстановления, передавая путь к локальному файлу
         service = BackupService()
-        result = service.restore_backup_from_path(temp_file_path, user_id)
+        result = service.restore_backup_from_path(local_temp_file_path, user_id)
 
         if isinstance(result, dict) and "error" in result:
             raise Exception(result["error"])
 
-        print(f"Restore task completed successfully for file: {temp_file_path}") # Для отладки
+        print(f"Restore task completed successfully for S3 key: {s3_key}") # Для отладки
         return result
 
     except Exception as e:
         print(f"Error in restore_backup_task: {e}")
-        # Не используем retry для ошибок типа "файл не найден" или "некорректный формат"
-        # raise self.retry(exc=e, countdown=60, max_retries=3)
-        # Просто возвращаем ошибку
+        # Возвращаем ошибку, чтобы фронтенд мог обработать её
         return {"error": str(e), "message": "Backup restore failed"}
     finally:
-        # Удаляем файл только если он существует и был успешно обработан или произошла ошибка
-        if os.path.exists(temp_file_path):
+        # Удаляем локальный временный файл
+        if local_temp_file_path and os.path.exists(local_temp_file_path):
             try:
-                os.unlink(temp_file_path)
-                print(f"Temporary file {temp_file_path} deleted after task completion.")
+                os.unlink(local_temp_file_path)
+                print(f"Local temporary file {local_temp_file_path} deleted after task completion.")
             except OSError as e:
-                print(f"Warning: Could not delete temporary file {temp_file_path}: {e}")
+                print(f"Warning: Could not delete local temporary file {local_temp_file_path}: {e}")
         else:
-            print(f"Temporary file {temp_file_path} was already deleted or never existed.")
+            print(f"Local temporary file was already deleted or never existed: {local_temp_file_path}")
+
+        # Удаляем файл из S3
+        try:
+            s3_client.delete_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
+            print(f"S3 temp file {s3_key} deleted after task completion.")
+        except Exception as s3_cleanup_error:
+            print(f"Warning: Could not delete S3 temp file {s3_key}: {s3_cleanup_error}")
 
 class BackupService:
     def restore_backup_from_path(self, file_path: str, user_id: str) -> Dict[str, Any]:

@@ -141,29 +141,36 @@ async def upload_backup(
     current_user: User = Depends(get_current_user),
 ):
     temp_file_path = None
+    s3_key = None
     try:
-        # Создаем временный файл
+        # Создаем временный файл для загруженного содержимого
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             # Читаем и записываем содержимое загруженного файла в локальный временный файл
+            import shutil
             shutil.copyfileobj(backup_file.file, temp_file)
-            # Альтернативно, если нужно читать по кусочкам:
-            # while chunk := backup_file.file.read(8192): # Обратите внимание на backup_file.file
-            #     temp_file.write(chunk)
             temp_file_path = temp_file.name
 
-        # Проверяем, что файл действительно создан
-        if not os.path.exists(temp_file_path):
-            raise HTTPException(status_code=500, detail="Failed to create temporary file")
+        # Генерируем уникальный ключ для S3
+        unique_filename = f"{uuid.uuid4()}.zip"
+        s3_key = f"temp_backups/{unique_filename}"
 
-        print(f"Created temp file for task: {temp_file_path}") # Для отладки
+        # Загружаем файл в S3
+        with open(temp_file_path, 'rb') as f:
+            s3_client.put_object(
+                Bucket=settings.AWS_S3_BUCKET_NAME,
+                Key=s3_key,
+                Body=f,
+                ContentType='application/zip' # Указываем тип для ясности
+            )
 
-        # Отправляем задачу Celery, передавая путь к файлу
-        task_id = restore_backup_task.delay(temp_file_path, str(current_user.id))
+        print(f"Uploaded backup file to S3: {s3_key}") # Для отладки
 
-        # Важно: НЕ удаляем файл здесь, потому что он будет использоваться в задаче.
-        # Файл будет удален в finally блоке Celery задачи.
-        # Удаляем temp_file_path из локальной области, чтобы не удалить его дважды
-        temp_file_path = None
+        # Удаляем локальный временный файл, т.к. он теперь в S3
+        os.unlink(temp_file_path)
+        temp_file_path = None # Убираем ссылку
+
+        # Отправляем задачу Celery, передавая S3 ключ вместо локального пути
+        task_id = restore_backup_task.delay(s3_key, str(current_user.id))
 
         return {"message": "Backup upload accepted", "task_id": str(task_id)}
 
@@ -171,11 +178,19 @@ async def upload_backup(
         # Если это уже HTTPException, просто пробрасываем её
         raise
     except Exception as e:
-        # Если произошла ошибка до отправки задачи, удаляем файл
+        # Если произошла ошибка, удаляем локальный файл (если он есть) и S3 объект (если он был создан)
         if temp_file_path and os.path.exists(temp_file_path):
             try:
                 os.unlink(temp_file_path)
                 print(f"Cleaned up temp file after error: {temp_file_path}")
             except OSError as cleanup_error:
                 print(f"Warning: Could not clean up temp file {temp_file_path}: {cleanup_error}")
+        
+        if s3_key: # Если S3 ключ был сгенерирован
+            try:
+                s3_client.delete_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
+                print(f"Cleaned up S3 temp file after error: {s3_key}")
+            except Exception as s3_cleanup_error:
+                print(f"Warning: Could not clean up S3 temp file {s3_key}: {s3_cleanup_error}")
+
         raise HTTPException(status_code=500, detail=f"Backup upload failed: {str(e)}")

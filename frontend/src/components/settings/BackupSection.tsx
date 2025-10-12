@@ -75,7 +75,14 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
           const downloadUrl = backUpAPI.downloadBackupByTaskId(taskId);
           // Используем window.location.assign или window.location.href
           // Это выполнит редирект в той же вкладке, начав скачивание
-          window.location.assign(downloadUrl);
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.download = ''; // или конкретное имя файла, если известно
+          link.target = '_blank'; // Открыть в новой вкладке/вкладке для скачивания
+          link.rel = 'noopener noreferrer';
+          document.body.appendChild(link); // Добавить временный элемент
+          link.click(); // Программно нажать
+          document.body.removeChild(link); // Удалить после клика
 
           setBackupSuccess(t('backup.success'));
         } else if (data.status === 'failed') {

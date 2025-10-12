@@ -97,6 +97,8 @@ CI/CD
 
 Поиск по коллекциям
 
+Warning: File 64b4fed0-6ebb-4912-8d48-34fa49f589b8 (from 64b4fed0-6ebb-4912-8d48-34fa49f589b8) or Group db561f52-5a50-4bde-9604-2609574e303a (from db561f52-5a50-4bde-9604-2609574e303a) does not exist in DB. Skipping link.
+
 
 Купить домен (например, через reg.ru)
 Настроить DNS: A запись для вашего IP

@@ -71,22 +71,34 @@ def get_tag_names_by_ids(tag_ids: List[UUID]) -> List[str]:
 
 def search_tags(query: str, limit: int, user_id: UUID) -> List[Tag]:
     """
-    Search for tags that are used in files owned by the specified user.
+    Search for tags that are used in files owned by the specified user or files in collections (groups) where the user has access.
     """
     with get_db_session() as db:
-        # Сначала получаем все файлы пользователя и собираем уникальные теги
-        user_files = db.query(File).filter(File.owner_id == user_id).all()
+        # Get all files owned by the user
+        owned_files = db.query(File).filter(File.owner_id == user_id).all()
 
-        # Собираем все уникальные tag_id из файлов пользователя
+        # Get all files from groups where the user is a member
+        user_groups_files = (
+            db.query(File)
+            .join(file_group)
+            .join(GroupMember)
+            .filter(GroupMember.user_id == user_id)
+            .all()
+        )
+
+        # Combine both lists of files
+        all_accessible_files = owned_files + user_groups_files
+
+        # Collect all unique tag IDs from all accessible files
         all_tag_ids = set()
-        for file in user_files:
+        for file in all_accessible_files:
             if file.tags:
                 all_tag_ids.update(file.tags)
 
         if not all_tag_ids:
             return []
 
-        # Ищем теги по собранным ID и имени
+        # Search for tags by collected IDs and name
         query_obj = (
             db.query(Tag)
             .filter(and_(Tag.id.in_(all_tag_ids), Tag.name.ilike(f"%{query}%")))

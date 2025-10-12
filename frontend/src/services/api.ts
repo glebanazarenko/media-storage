@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { LoginCredentials, RegisterData, FileItem, SearchFilters } from '../types';
+import { LoginCredentials, RegisterData, FileItem, SearchFilters, BackupFile, RestoreBackupRequest} from '../types';
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -231,12 +231,12 @@ export const backUpAPI = {
     // или используем window.location.assign
     return `${API_BASE_URL}/backup/download-task/${taskId}`;
   },
-  restoreBackup: (formData: FormData) => {
-    return api.post('/backup/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+  listBackups: () => {
+    return api.get<BackupFile[]>('/backup/list');
+  },
+
+  restoreBackupByS3Key: (request: RestoreBackupRequest) => {
+    return api.post('/backup/restore-by-s3-key', request);
   }
 };
 

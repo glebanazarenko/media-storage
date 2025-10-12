@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Download, Upload, Database, AlertCircle, Shield } from 'lucide-react';
+import { Download, Upload, Database, AlertCircle, Shield, RefreshCw } from 'lucide-react';
 import { backUpAPI } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -12,10 +12,18 @@ interface BackupSectionProps {
 interface BackupStatusResponse {
   task_id: string;
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  s3_key?: string; // Присутствует при завершении
-  download_url?: string; // Присутствует при завершении
-  error?: string; // Присутствует при ошибке
-  message?: string; // Может присутствовать в статусе pending
+  s3_key?: string;
+  download_url?: string;
+  error?: string;
+  message?: string;
+}
+
+// Тип для бэкапа из S3
+interface BackupFile {
+  s3_key: string;
+  filename: string;
+  size: number;
+  last_modified: string;
 }
 
 export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
@@ -35,6 +43,11 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
   const [pollingStatus, setPollingStatus] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Новые состояния для списка бэкапов
+  const [backups, setBackups] = useState<BackupFile[]>([]);
+  const [loadingBackups, setLoadingBackups] = useState(false);
+  const [selectedBackup, setSelectedBackup] = useState<string | null>(null); // s3_key выбранного бэкапа
+
   // Очистка интервала при размонтировании компонента или изменении task_id
   useEffect(() => {
     return () => {
@@ -44,7 +57,47 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     };
   }, []);
 
+  // --- НОВЫЙ МЕТОД: Загрузка списка бэкапов ---
+  const handleLoadBackups = async () => {
+    setLoadingBackups(true);
+    setBackupError('');
+    try {
+      const response = await backUpAPI.listBackups();
+      setBackups(response.data);
+      setSelectedBackup(null); // Сбросить выбор
+    } catch (error: any) {
+      console.error('Load backups error:', error);
+      setBackupError(t('backup.loadBackupsError'));
+    } finally {
+      setLoadingBackups(false);
+    }
+  };
+
+  // --- НОВЫЙ МЕТОД: Восстановление по s3_key ---
+  const handleRestoreSelectedBackup = async () => {
+    if (!selectedBackup || restoreLoading) return;
+
+    setRestoreLoading(true);
+    setRestoreError('');
+    setRestoreSuccess('');
+
+    try {
+      const response = await backUpAPI.restoreBackupByS3Key({ s3_key: selectedBackup });
+      const taskId = response.data.task_id;
+
+      // Начинаем опрос статуса задачи
+      startRestorePolling(taskId);
+    } catch (error: any) {
+      console.error('Restore error:', error);
+      setRestoreError(t('backup.restoreError'));
+      setRestoreLoading(false);
+    }
+  };
+
+  // --- Остальные методы без изменений (startPolling, handleDownloadBackup, handleDownloadFullBackup) ---
+
   const startPolling = (taskId: string, taskType: 'user' | 'full') => {
+    // (код остается тем же, но может быть немного изменен, чтобы не использовать window.location.assign)
     setCurrentTaskId(taskId);
     setCurrentTaskType(taskType);
     setPollingStatus(true);
@@ -71,18 +124,16 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
           setCurrentTaskId(null);
           setCurrentTaskType(null);
 
-          // --- ИЗМЕНЕНО: Выполняем переход по URL для скачивания ---
+          // --- ИЗМЕНЕНО: Выполняем скачивание ---
           const downloadUrl = backUpAPI.downloadBackupByTaskId(taskId);
-          // Используем window.location.assign или window.location.href
-          // Это выполнит редирект в той же вкладке, начав скачивание
           const link = document.createElement('a');
           link.href = downloadUrl;
           link.download = ''; // или конкретное имя файла, если известно
-          link.target = '_blank'; // Открыть в новой вкладке/вкладке для скачивания
+          link.target = '_blank';
           link.rel = 'noopener noreferrer';
-          document.body.appendChild(link); // Добавить временный элемент
-          link.click(); // Программно нажать
-          document.body.removeChild(link); // Удалить после клика
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
 
           setBackupSuccess(t('backup.success'));
         } else if (data.status === 'failed') {
@@ -116,7 +167,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
   };
 
   const handleDownloadBackup = async () => {
-    if (backupLoading || pollingStatus) return; // Предотвращаем двойной запуск
+    if (backupLoading || pollingStatus) return;
 
     setBackupLoading(true);
     setBackupError('');
@@ -126,7 +177,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
       const response = await backUpAPI.initiateBackup();
       const taskId = response.data.task_id;
 
-      setBackupLoading(false); // Завершаем индикатор загрузки инициации
+      setBackupLoading(false);
       startPolling(taskId, 'user');
     } catch (error: any) {
       console.error('Initiate backup error:', error);
@@ -136,7 +187,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
   };
 
   const handleDownloadFullBackup = async () => {
-    if (fullBackupLoading || pollingStatus) return; // Предотвращаем двойной запуск
+    if (fullBackupLoading || pollingStatus) return;
 
     setFullBackupLoading(true);
     setBackupError('');
@@ -146,7 +197,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
       const response = await backUpAPI.initiateFullBackup();
       const taskId = response.data.task_id;
 
-      setFullBackupLoading(false); // Завершаем индикатор загрузки инициации
+      setFullBackupLoading(false);
       startPolling(taskId, 'full');
     } catch (error: any) {
       console.error('Initiate full backup error:', error);
@@ -155,35 +206,10 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     }
   };
 
-  const handleUploadBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setRestoreLoading(true);
-    setRestoreError('');
-    setRestoreSuccess('');
-
-    const formData = new FormData();
-    formData.append('backup_file', file);
-
-    try {
-      // Теперь сервер возвращает { task_id: string, message: string }
-      const response = await backUpAPI.restoreBackup(formData);
-      const taskId = response.data.task_id;
-
-      // Начинаем опрос статуса задачи
-      startRestorePolling(taskId);
-    } catch (error: any) {
-      console.error('Restore error:', error);
-      setRestoreError(t('backup.restoreError'));
-      setRestoreLoading(false);
-      event.target.value = '';
-    }
-  };
-
+  // --- Изменённая функция опроса для восстановления ---
   const startRestorePolling = (taskId: string) => {
     setCurrentTaskId(taskId);
-    setCurrentTaskType('restore'); // Добавляем тип задачи
+    setCurrentTaskType('restore');
     setPollingStatus(true);
     setRestoreError('');
     setRestoreSuccess('');
@@ -206,9 +232,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
           setCurrentTaskId(null);
           setCurrentTaskType(null);
           setRestoreLoading(false);
-          setRestoreSuccess(
-            t('backup.restoreSuccessMessage', { restored_files: data.message?.restored_files || 'unknown' })
-          );
+          setRestoreSuccess(t('backup.restoreSuccessMessage', { restored_files: data.message?.restored_files || 'unknown' }));
         } else if (data.status === 'failed') {
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
@@ -235,7 +259,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
     }, 5000);
   };
 
-  // Функция для отмены опроса вручную (опционально)
+  // --- Остальные методы без изменений ---
   const handleCancelPolling = () => {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
@@ -269,7 +293,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
             </div>
             <button
               onClick={handleDownloadBackup}
-              disabled={backupLoading || pollingStatus} // Отключаем, если инициируется или идет опрос
+              disabled={backupLoading || pollingStatus}
               className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-50 text-sm"
             >
               {backupLoading ? (
@@ -280,7 +304,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
               ) : pollingStatus && currentTaskType === 'user' ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>{t('backup.generating')}</span> {/* Новый перевод или строка */}
+                  <span>{t('backup.generating')}</span>
                 </>
               ) : (
                 <>
@@ -291,10 +315,9 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
             </button>
           </div>
 
-          {/* Индикатор прогресса опроса */}
           {pollingStatus && currentTaskType === 'user' && (
             <div className="bg-blue-500/20 border border-blue-500/50 text-blue-200 px-3 py-2 rounded text-sm mt-2">
-              {t('backup.generatingMessage')} {/* Новый перевод или строка */}
+              {t('backup.generatingMessage')}
               <button
                 onClick={handleCancelPolling}
                 className="ml-2 text-xs text-blue-300 hover:text-white underline"
@@ -333,7 +356,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
               </div>
               <button
                 onClick={handleDownloadFullBackup}
-                disabled={fullBackupLoading || pollingStatus} // Отключаем, если инициируется или идет опрос
+                disabled={fullBackupLoading || pollingStatus}
                 className="flex items-center space-x-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-50 text-sm"
               >
                 {fullBackupLoading ? (
@@ -344,7 +367,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
                 ) : pollingStatus && currentTaskType === 'full' ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>{t('backup.generating')}</span> {/* Новый перевод или строка */}
+                    <span>{t('backup.generating')}</span>
                   </>
                 ) : (
                   <>
@@ -362,10 +385,9 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
               <p>• {t('backup.sensitiveData')}</p>
             </div>
 
-            {/* Индикатор прогресса опроса */}
             {pollingStatus && currentTaskType === 'full' && (
               <div className="bg-blue-500/20 border border-blue-500/50 text-blue-200 px-3 py-2 rounded text-sm mt-2">
-                {t('backup.generatingMessage')} {/* Новый перевод или строка */}
+                {t('backup.generatingMessage')}
                 <button
                   onClick={handleCancelPolling}
                   className="ml-2 text-xs text-blue-300 hover:text-white underline"
@@ -390,43 +412,95 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
           </div>
         )}
 
-        {/* Upload Backup */}
+        {/* NEW: Restore from S3 Backup */}
         <div className="border border-slate-700 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-white font-medium flex items-center">
-                <Upload className="w-4 h-4 mr-2" />
-                {t('backup.restore')}
-              </h3>
-              <p className="text-slate-400 text-sm mt-1">
-                {t('backup.restoreDescription')}
-              </p>
-            </div>
-            <label className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 text-sm cursor-pointer">
-              <Upload className="w-4 h-4" />
-              <span>{t('backup.selectFile')}</span>
-              <input
-                type="file"
-                accept=".zip"
-                onChange={handleUploadBackup}
-                disabled={restoreLoading}
-                className="hidden"
-              />
-            </label>
+          <div className="mb-3">
+            <h3 className="text-white font-medium flex items-center">
+              <Upload className="w-4 h-4 mr-2" />
+              {t('backup.restoreFromS3')}
+            </h3>
+            <p className="text-slate-400 text-sm mt-1">
+              {t('backup.restoreFromS3Description')}
+            </p>
           </div>
 
-          <div className="text-slate-400 text-xs mt-2">
-            <p>• {t('backup.fileSupport')}</p>
-            <p>• {t('backup.skipDuplicates')}</p>
-            <p>• {t('backup.processTime')}</p>
-            {user?.is_admin && (
-              <p className="text-yellow-400">• {t('backup.adminRestore')}</p>
-            )}
+          <div className="flex flex-wrap gap-3 mb-3">
+            <button
+              onClick={handleLoadBackups}
+              disabled={loadingBackups}
+              className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 text-sm disabled:opacity-50"
+            >
+              {loadingBackups ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>{t('backup.loadingBackups')}</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>{t('backup.loadBackups')}</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleRestoreSelectedBackup}
+              disabled={!selectedBackup || restoreLoading}
+              className="flex items-center space-x-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 text-sm disabled:opacity-50"
+            >
+              {restoreLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>{t('common.loading')}</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  <span>{t('backup.restoreSelected')}</span>
+                </>
+              )}
+            </button>
           </div>
+
+          {backupError && (
+            <div className="bg-red-500/20 border border-red-500/50 text-red-200 px-3 py-2 rounded text-sm mt-2 flex items-center">
+              <AlertCircle className="w-4 h-4 mr-2" />
+              {backupError}
+            </div>
+          )}
+
+          {backups.length > 0 && (
+            <div className="mt-3">
+              <label className="block text-slate-300 text-sm mb-2">{t('backup.selectBackup')}:</label>
+              <div className="max-h-60 overflow-y-auto border border-slate-600 rounded-lg bg-slate-800 p-2">
+                {backups.map((backup) => (
+                  <div
+                    key={backup.s3_key}
+                    className={`p-2 rounded cursor-pointer mb-1 ${
+                      selectedBackup === backup.s3_key
+                        ? 'bg-blue-500/50 border border-blue-500'
+                        : 'hover:bg-slate-700'
+                    }`}
+                    onClick={() => setSelectedBackup(backup.s3_key)}
+                  >
+                    <div className="flex justify-between">
+                      <span className="text-white">{backup.filename}</span>
+                      <span className="text-slate-400 text-xs">
+                        {(backup.size / (1024 * 1024)).toFixed(2)} MB
+                      </span>
+                    </div>
+                    <div className="text-slate-500 text-xs">
+                      {new Date(backup.last_modified).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {pollingStatus && currentTaskType === 'restore' && (
             <div className="bg-blue-500/20 border border-blue-500/50 text-blue-200 px-3 py-2 rounded text-sm mt-2">
-              {t('backup.restoringMessage')} {/* Добавьте в i18n */}
+              {t('backup.restoringMessage')}
               <button
                 onClick={handleCancelPolling}
                 className="ml-2 text-xs text-blue-300 hover:text-white underline"

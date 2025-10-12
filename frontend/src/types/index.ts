@@ -116,3 +116,14 @@ export interface Group {
   // file_count и members не возвращаются в GroupResponse, нужно получать отдельно
   // thumbnail_url не возвращается, нужно генерировать или получать из файла
 }
+
+export interface BackupFile {
+  s3_key: string;
+  filename: string;
+  size: number;
+  last_modified: string;
+}
+
+export interface RestoreBackupRequest {
+  s3_key: string;
+}

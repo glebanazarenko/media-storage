@@ -5,7 +5,8 @@ from uuid import UUID
 from sqlalchemy import and_
 
 from app.core.database import get_db_session
-from app.models.base import File, Tag
+from sqlalchemy import and_, asc, desc, not_, or_, distinct
+from app.models.base import File, Tag, file_group, GroupMember
 
 
 def slugify(text: str) -> str:
@@ -74,25 +75,37 @@ def search_tags(query: str, limit: int, user_id: UUID) -> List[Tag]:
     Search for tags that are used in files owned by the specified user or files in collections (groups) where the user has access.
     """
     with get_db_session() as db:
-        # Get all files owned by the user
-        owned_files = db.query(File).filter(File.owner_id == user_id).all()
+        # Subquery to get all files owned by the user
+        owned_files_subq = db.query(File.id, File.tags).filter(File.owner_id == user_id).subquery()
 
-        # Get all files from groups where the user is a member
-        user_groups_files = (
-            db.query(File)
-            .join(file_group)
-            .join(GroupMember)
+        # Subquery to get all files from groups where the user is a member
+        group_files_subq = (
+            db.query(File.id, File.tags)
+            .join(file_group, File.id == file_group.c.file_id)
+            .join(GroupMember, GroupMember.group_id == file_group.c.group_id)
             .filter(GroupMember.user_id == user_id)
-            .all()
+            .subquery()
         )
 
-        # Combine both lists of files
-        all_accessible_files = owned_files + user_groups_files
+        # Combine both queries using union
+        all_files_query = db.query(File.id, File.tags).filter(
+            or_(
+                File.owner_id == user_id,
+                File.id.in_(
+                    db.query(file_group.c.file_id)
+                    .join(GroupMember, GroupMember.group_id == file_group.c.group_id)
+                    .filter(GroupMember.user_id == user_id)
+                )
+            )
+        )
+
+        # Get all accessible files
+        all_accessible_files = all_files_query.all()
 
         # Collect all unique tag IDs from all accessible files
         all_tag_ids = set()
         for file in all_accessible_files:
-            if file.tags:
+            if file.tags and isinstance(file.tags, list):
                 all_tag_ids.update(file.tags)
 
         if not all_tag_ids:

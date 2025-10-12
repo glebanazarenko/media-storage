@@ -136,7 +136,7 @@ class BackupUploadResponse(BaseModel):
     task_id: str
 
 @router.post("/upload", response_model=BackupUploadResponse)
-def upload_backup(
+async def upload_backup(
     backup_file: UploadFile = File(...), # Имя файла будет использоваться для построения пути в S3
     current_user: User = Depends(get_current_user),
 ):

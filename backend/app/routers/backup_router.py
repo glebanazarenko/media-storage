@@ -195,7 +195,6 @@ def restore_backup_by_s3_key(
 
     # Отправляем задачу Celery, передавая S3 ключ
     # В данном случае, мы *не создаем* временный файл в S3, а используем существующий
-    # Поэтому should_delete_s3_key = False
-    task_id = restore_backup_task.delay(s3_key, str(current_user.id), should_delete_s3_key=False)
+    task_id = restore_backup_task.delay(s3_key, str(current_user.id))
 
     return {"message": "Backup restore initiated", "task_id": str(task_id)}

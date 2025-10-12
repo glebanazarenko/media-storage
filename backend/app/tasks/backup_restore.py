@@ -15,19 +15,21 @@ from app.models.base import file_group # Импортируем таблицу �
 from app.core.config import settings # Добавьте импорт settings
 
 @celery_app.task(bind=True)
-def restore_backup_task(self, s3_key: str, user_id: str, should_delete_s3_key: bool = True): # Добавлен параметр
+def restore_backup_task(self, s3_key: str, user_id: str): # Добавлен параметр
     local_temp_file_path = None
     try:
-        print(f"Starting restore task for S3 key: {s3_key}, delete_after: {should_delete_s3_key}") # Для отладки
+        print(f"Starting restore task for S3 key: {s3_key}") # Для отладки
 
         # Скачиваем файл из S3 в локальный временный файл
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             # Получаем объект из S3
             response = s3_client.get_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
-            # Читаем содержимое
-            file_content = response['Body'].read()
-            # Записываем в локальный временный файл
-            temp_file.write(file_content)
+
+            # Читаем содержимое **по кусочкам** и сразу записываем в локальный файл
+            # Это предотвращает загрузку всего файла в память
+            for chunk in iter(lambda: response['Body'].read(8192), b''):
+                temp_file.write(chunk)
+
             local_temp_file_path = temp_file.name
 
         print(f"Downloaded S3 file {s3_key} to local temp file: {local_temp_file_path}") # Для отладки
@@ -56,16 +58,6 @@ def restore_backup_task(self, s3_key: str, user_id: str, should_delete_s3_key: b
                 print(f"Warning: Could not delete local temporary file {local_temp_file_path}: {e}")
         else:
             print(f"Local temporary file was already deleted or never existed: {local_temp_file_path}")
-
-        # Удаляем файл из S3 ТОЛЬКО если флаг указывает на это
-        if should_delete_s3_key:
-            try:
-                s3_client.delete_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
-                print(f"S3 temp file {s3_key} deleted after task completion.")
-            except Exception as s3_cleanup_error:
-                print(f"Warning: Could not delete S3 temp file {s3_key}: {s3_cleanup_error}")
-        else:
-            print(f"S3 file {s3_key} was not deleted as it was not created by this process.")
 
 class BackupService:
     def restore_backup_from_path(self, file_path: str, user_id: str) -> Dict[str, Any]:

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from uuid import UUID
+import re
 
 from fastapi import HTTPException
 from sqlalchemy import and_, asc, desc, not_, or_, distinct
@@ -13,6 +14,8 @@ from app.models.base import file_group # Таблица связи файлов 
 from app.models.base import Group, GroupMember
 from app.repositories.tag_repository import get_or_create_tags
 from app.schemas.file_schemas import FileCreate
+
+REGEX_CHARS = {'^', '$', '(', ')', '|', '{', '}', '[', ']', '\\'}
 
 
 def create_file(file_data: FileCreate) -> DBFile:
@@ -144,6 +147,26 @@ def get_category_name_by_id(category_id: UUID) -> str:
             raise HTTPException(status_code=500, detail="Default category not found")
         return category.name
 
+def is_regex(query: str) -> bool:
+    """
+    Определяет, является ли строка регулярным выражением, по характерным символам.
+    """
+    if not query:
+        return False
+
+    # Если строка содержит один из специфичных символов регулярного выражения
+    if any(c in query for c in REGEX_CHARS):
+        # Но не содержит * или ?, значит, это не glob
+        if not ('*' in query or '?' in query):
+            return True
+        # Или если содержит *, ?, но в контексте, который похож на регулярку
+        # Например, "(txt|pdf)$" или "^(?!.*\.png$).*"
+        # Можно добавить проверку на паттерны
+        if re.search(r'[()|\[\]{}^$\\]', query):
+            return True
+
+    return False
+
 
 def glob_to_ilike_pattern(mask: str) -> str:
     """
@@ -168,7 +191,7 @@ def split_masks(s: str) -> list[str]:
 
 
 def search_files(
-    query_str: str = None, # Переименовал, чтобы не пересекалось с sqlalchemy.orm.query
+    query_str: str = None,
     category: str | None = None,
     include_tags: list[str] = None,
     exclude_tags: list[str] = None,
@@ -185,7 +208,7 @@ def search_files(
     """
     with get_db_session() as db:
         query_obj = (
-            db.query(distinct(DBFile.id), DBFile) # distinct для избежания дубликатов
+            db.query(distinct(DBFile.id), DBFile)
             .join(Category, DBFile.category_id == Category.id)
             .outerjoin(file_group, DBFile.id == file_group.c.file_id)
             .outerjoin(GroupMember, and_(file_group.c.group_id == GroupMember.group_id, GroupMember.user_id == user_id))
@@ -198,24 +221,31 @@ def search_files(
         )
 
         if query_str:
-            has_glob = ("*" in query_str) or ("?" in query_str)
-            if has_glob:
-                masks = split_masks(query_str)
-                if masks:
-                    like_clauses = [
-                        DBFile.original_name.ilike(
-                            glob_to_ilike_pattern(m), escape="\\"
-                        )
-                        for m in masks
-                    ]
-                    query_obj = query_obj.filter(and_(*like_clauses))
+            if is_regex(query_str):
+                # Используем регулярное выражение (PostgreSQL: ~*, MySQL: REGEXP)
+                regex_filter = DBFile.original_name.op("~*")(query_str)
+                query_obj = query_obj.filter(regex_filter)
             else:
-                text_filter = or_(
-                    DBFile.original_name.ilike(f"%{query_str}%"),
-                    DBFile.description.ilike(f"%{query_str}%"),
-                )
-                query_obj = query_obj.filter(text_filter)
+                # Старая логика: glob или текст
+                has_glob = ("*" in query_str) or ("?" in query_str)
+                if has_glob:
+                    masks = split_masks(query_str)
+                    if masks:
+                        like_clauses = [
+                            DBFile.original_name.ilike(
+                                glob_to_ilike_pattern(m), escape="\\"
+                            )
+                            for m in masks
+                        ]
+                        query_obj = query_obj.filter(or_(*like_clauses))  # ← or_ вместо and_
+                else:
+                    text_filter = or_(
+                        DBFile.original_name.ilike(f"%{query_str}%"),
+                        DBFile.description.ilike(f"%{query_str}%"),
+                    )
+                    query_obj = query_obj.filter(text_filter)
 
+        # ... остальные фильтры ...
         if category != "all":
             query_obj = query_obj.filter(Category.name == category)
 
@@ -248,9 +278,9 @@ def search_files(
 
         offset = (page - 1) * limit
         results = query_obj.offset(offset).limit(limit).all()
-        files = [r[1] for r in results] # Извлекаем объекты файлов
+        files = [r[1] for r in results]
 
-        # Подсчет общего количества
+        # --- Подсчёт общего количества ---
         count_query = (
             db.query(distinct(DBFile.id))
             .join(Category, DBFile.category_id == Category.id)
@@ -263,24 +293,31 @@ def search_files(
                 )
             )
         )
-        if query_str:
-            if has_glob:
-                 masks = split_masks(query_str)
-                 if masks:
-                    like_clauses = [
-                        DBFile.original_name.ilike(
-                            glob_to_ilike_pattern(m), escape="\\"
-                        )
-                        for m in masks
-                    ]
-                    count_query = count_query.filter(and_(*like_clauses))
-            else:
-                text_filter = or_(
-                    DBFile.original_name.ilike(f"%{query_str}%"),
-                    DBFile.description.ilike(f"%{query_str}%"),
-                )
-                count_query = count_query.filter(text_filter)
 
+        if query_str:
+            if is_regex(query_str):
+                regex_filter = DBFile.original_name.op("~*")(query_str)
+                count_query = count_query.filter(regex_filter)
+            else:
+                has_glob = ("*" in query_str) or ("?" in query_str)
+                if has_glob:
+                    masks = split_masks(query_str)
+                    if masks:
+                        like_clauses = [
+                            DBFile.original_name.ilike(
+                                glob_to_ilike_pattern(m), escape="\\"
+                            )
+                            for m in masks
+                        ]
+                        count_query = count_query.filter(or_(*like_clauses))
+                else:
+                    text_filter = or_(
+                        DBFile.original_name.ilike(f"%{query_str}%"),
+                        DBFile.description.ilike(f"%{query_str}%"),
+                    )
+                    count_query = count_query.filter(text_filter)
+
+        # ... остальные фильтры ...
         if category != "all":
             count_query = count_query.filter(Category.name == category)
 

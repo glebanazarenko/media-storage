@@ -105,3 +105,24 @@ Warning: File 64b4fed0-6ebb-4912-8d48-34fa49f589b8 (from 64b4fed0-6ebb-4912-8d48
 Получить Let's Encrypt сертификат:
 sudo certbot certonly --standalone -d yourdomain.com
 Настроить автоматическое обновление сертификатов
+
+Перезапусти WireGuard
+sudo wg-quick down wg0
+sudo wg-quick up wg0
+
+
+
+Ты должен получить IP контейнера nginx:
+
+docker inspect media-storage_nginx_1 | grep IPAddress
+
+Теперь добавь правило iptables:
+
+# Замените 172.18.0.2 на реальный IP контейнера nginx
+sudo iptables -t nat -A PREROUTING -i wg0 -p tcp --dport 1337 -j DNAT --to-destination 172.18.0.2:1337
+sudo iptables -A FORWARD -i wg0 -o docker0 -j ACCEPT
+# Замени docker0 на правильный интерфейс, если он другой. Проверь с помощью ip link show. 
+
+
+
+sudo iptables -t nat -L -n -v

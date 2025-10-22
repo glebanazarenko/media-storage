@@ -82,3 +82,8 @@ build/
 *.crt
 *.pem
 *.csv
+
+# Nginx logs
+*.conf
+nginx-logs/
+*.log

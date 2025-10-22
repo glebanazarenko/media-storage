@@ -35,13 +35,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Подключение роутеров
-app.include_router(auth_router.router)
-app.include_router(file_router.router)
-app.include_router(group_router.router)
-app.include_router(tag_router.router)
-app.include_router(backup_router.router)
-app.include_router(user_router.router)
+# Создай отдельное приложение (или под-приложение) с префиксом /api
+api_app = FastAPI(
+    title="Media Storage API",
+    description="Платформа для хранения и управления медиафайлами",
+    version="0.1.0",
+)
+
+# Подключение роутеров к api_app (с префиксом /api)
+from app.routers import (
+    auth_router,
+    backup_router,
+    file_router,
+    group_router,
+    tag_router,
+    user_router
+)
+
+api_app.include_router(auth_router.router)
+api_app.include_router(file_router.router)
+api_app.include_router(group_router.router)
+api_app.include_router(tag_router.router)
+api_app.include_router(backup_router.router)
+api_app.include_router(user_router.router)
+
+# Подключаем api_app к основному app с префиксом /api
+app.mount("/api", api_app)
 
 from celery import Celery
 from app.core.config import settings

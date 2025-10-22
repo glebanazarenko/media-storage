@@ -7,4 +7,15 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    // ✅ Разрешаем проксирование с nginx
+    allowedHosts: [
+      'localhost',
+      'frontend',  // ✅ Разрешаем хост "frontend"
+      '127.0.0.1',
+      '0.0.0.0',
+    ],
+  },
 });

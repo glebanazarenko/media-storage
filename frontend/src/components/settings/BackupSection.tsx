@@ -469,7 +469,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
             </div>
           )}
 
-{backups.length > 0 && (
+          {backups.length > 0 && (
             <div className="mt-3">
               <label className="block text-slate-300 text-sm mb-2">{t('backup.selectBackup')}:</label>
               <div className="max-h-60 overflow-y-auto border border-slate-600 rounded-lg bg-slate-800 p-2">
@@ -503,6 +503,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
                             const downloadUrl = backUpAPI.downloadBackupByS3Key(backup.s3_key);
                             const link = document.createElement('a');
                             link.href = downloadUrl;
+                            link.download = ''; // или конкретное имя файла, если известно
                             link.target = '_blank'; // Открываем в новой вкладке/окне
                             link.rel = 'noopener noreferrer';
                             document.body.appendChild(link);

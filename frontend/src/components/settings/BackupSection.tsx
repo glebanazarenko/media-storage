@@ -443,6 +443,33 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
               )}
             </button>
 
+            {/* --- НОВАЯ КНОПКА РЯДОМ С LOAD BACKUPS --- */}
+            {user?.is_admin && (
+              <button
+                onClick={handleDownloadFullBackup}
+                disabled={fullBackupLoading || pollingStatus} // Используем состояние fullBackupLoading и pollingStatus
+                className="flex items-center space-x-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-50 text-sm"
+              >
+                {fullBackupLoading ? ( // Проверяем fullBackupLoading
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>{t('common.loading')}</span>
+                  </>
+                ) : pollingStatus && currentTaskType === 'full' ? ( // Проверяем pollingStatus и тип задачи
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>{t('backup.generating')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4" />
+                    <span>{t('backup.fullBackupButton')}</span> {/* Используем соответствующий текст из i18n */}
+                  </>
+                )}
+              </button>
+            )}
+            {/* --- /НОВАЯ КНОПКА --- */}
+
             <button
               onClick={handleRestoreSelectedBackup}
               disabled={!selectedBackup || restoreLoading}

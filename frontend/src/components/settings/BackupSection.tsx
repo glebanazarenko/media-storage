@@ -443,33 +443,6 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
               )}
             </button>
 
-            {/* --- НОВАЯ КНОПКА РЯДОМ С LOAD BACKUPS --- */}
-            {user?.is_admin && (
-              <button
-                onClick={handleDownloadFullBackup}
-                disabled={fullBackupLoading || pollingStatus} // Используем состояние fullBackupLoading и pollingStatus
-                className="flex items-center space-x-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-50 text-sm"
-              >
-                {fullBackupLoading ? ( // Проверяем fullBackupLoading
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>{t('common.loading')}</span>
-                  </>
-                ) : pollingStatus && currentTaskType === 'full' ? ( // Проверяем pollingStatus и тип задачи
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>{t('backup.generating')}</span>
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4" />
-                    <span>{t('backup.fullBackupButton')}</span> {/* Используем соответствующий текст из i18n */}
-                  </>
-                )}
-              </button>
-            )}
-            {/* --- /НОВАЯ КНОПКА --- */}
-
             <button
               onClick={handleRestoreSelectedBackup}
               disabled={!selectedBackup || restoreLoading}
@@ -496,7 +469,7 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
             </div>
           )}
 
-          {backups.length > 0 && (
+{backups.length > 0 && (
             <div className="mt-3">
               <label className="block text-slate-300 text-sm mb-2">{t('backup.selectBackup')}:</label>
               <div className="max-h-60 overflow-y-auto border border-slate-600 rounded-lg bg-slate-800 p-2">
@@ -510,14 +483,39 @@ export const BackupSection: React.FC<BackupSectionProps> = ({ userId }) => {
                     }`}
                     onClick={() => setSelectedBackup(backup.s3_key)}
                   >
-                    <div className="flex justify-between">
-                      <span className="text-white">{backup.filename}</span>
-                      <span className="text-slate-400 text-xs">
-                        {(backup.size / (1024 * 1024)).toFixed(2)} MB
-                      </span>
-                    </div>
-                    <div className="text-slate-500 text-xs">
-                      {new Date(backup.last_modified).toLocaleString()}
+                    <div className="flex justify-between items-center"> {/* Изменено: добавлен items-center */}
+                      <div className="flex-1"> {/* Обернем текст в div для лучшего контроля ширины */}
+                        <div className="flex justify-between">
+                          <span className="text-white">{backup.filename}</span>
+                          <span className="text-slate-400 text-xs">
+                            {(backup.size / (1024 * 1024)).toFixed(2)} MB
+                          </span>
+                        </div>
+                        <div className="text-slate-500 text-xs">
+                          {new Date(backup.last_modified).toLocaleString()}
+                        </div>
+                      </div>
+                      {/* --- НОВАЯ КНОПКА СКАЧИВАНИЯ --- */}
+                      {user?.is_admin && ( // Показываем только админу
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation(); // Останавливаем всплытие, чтобы не сработал onClick div
+                            const downloadUrl = backUpAPI.downloadBackupByS3Key(backup.s3_key);
+                            const link = document.createElement('a');
+                            link.href = downloadUrl;
+                            link.target = '_blank'; // Открываем в новой вкладке/окне
+                            link.rel = 'noopener noreferrer';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }}
+                          className="ml-2 p-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium rounded text-xs"
+                          title={t('backup.download')} // Добавим подсказку
+                        >
+                          <Download className="w-3 h-3" /> {/* Иконка для кнопки */}
+                        </button>
+                      )}
+                      {/* --- /НОВАЯ КНОПКА --- */}
                     </div>
                   </div>
                 ))}

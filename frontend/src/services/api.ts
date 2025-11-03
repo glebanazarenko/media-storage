@@ -237,6 +237,11 @@ export const backUpAPI = {
 
   restoreBackupByS3Key: (request: RestoreBackupRequest) => {
     return api.post('/backup/restore-by-s3-key', request);
+  },
+
+  downloadBackupByS3Key: (s3Key: string) => {
+    // Возвращаем URL для прямого скачивания
+    return `${API_BASE_URL}/backup/download-by-s3-key/${encodeURIComponent(s3Key)}`;
   }
 };
 

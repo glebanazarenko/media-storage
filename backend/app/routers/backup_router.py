@@ -198,3 +198,45 @@ def restore_backup_by_s3_key(
     task_id = restore_backup_task.delay(s3_key, str(current_user.id))
 
     return {"message": "Backup restore initiated", "task_id": str(task_id)}
+
+
+@router.get("/download-by-s3-key/{s3_key}") # GET запрос с s3_key в URL
+def download_backup_by_s3_key(
+    s3_key: str, # Извлекаем s3_key из пути
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Скачивает файл бэкапа напрямую из S3 по s3_key.
+    Доступно только администратору.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Access denied. Admin rights required.")
+
+    # Проверяем, что ключ начинается с 'backups/' для безопасности
+    if not s3_key.startswith('backups/'):
+        raise HTTPException(status_code=400, detail="Invalid backup key format")
+
+    try:
+        response = s3_client.get_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
+        file_size = response.get('ContentLength', 0)
+        content_type = response.get('ContentType', 'application/zip')
+    except ClientError as e:
+        print(f"Error downloading file from S3: {e}")
+        raise HTTPException(status_code=500, detail="Failed to download backup file from storage")
+
+    def iter_chunks(chunk_size: int = 8192) -> Iterator[bytes]:
+        stream = response['Body']
+        while True:
+            chunk = stream.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
+    return StreamingResponse(
+        iter_chunks(),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f"attachment; filename={s3_key.split('/')[-1]}",
+            "Content-Length": str(file_size)
+        }
+    )

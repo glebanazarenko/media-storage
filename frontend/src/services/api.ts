@@ -240,8 +240,17 @@ export const backUpAPI = {
   },
 
   downloadBackupByS3Key: (s3Key: string) => {
-    // Возвращаем URL для прямого скачивания
-    return `${API_BASE_URL}/backup/download-by-s3-key/${encodeURIComponent(s3Key)}`;
+    // Извлекаем только имя файла из полного s3_key (например, из 'backups/...zip' -> '...zip')
+    // Это безопаснее, чем просто передавать s3_key напрямую, если s3_key может быть полным путем
+    const filename = s3Key.split('/').pop(); // Берем последнюю часть после '/'
+    if (!filename) {
+        console.error("Could not extract filename from s3_key:", s3Key);
+        // Возвращаем URL с пустым filename или обработайте ошибку по-другому
+        // В реальной ситуации лучше выбросить ошибку или вернуть null
+        return `${API_BASE_URL}/backup/download-by-s3-key/`;
+    }
+    // Возвращаем URL для прямого скачивания, передавая только имя файла
+    return `${API_BASE_URL}/backup/download-by-s3-key/${encodeURIComponent(filename)}`;
   }
 };
 

@@ -200,21 +200,20 @@ def restore_backup_by_s3_key(
     return {"message": "Backup restore initiated", "task_id": str(task_id)}
 
 
-@router.get("/download-by-s3-key/{s3_key}") # GET запрос с s3_key в URL
+@router.get("/download-by-s3-key/{s3_key_filename}") # GET запрос с s3_key_filename в URL
 def download_backup_by_s3_key(
-    s3_key: str, # Извлекаем s3_key из пути
+    s3_key_filename: str, # Извлекаем ИМЯ ФАЙЛА из пути как s3_key_filename
     current_user: User = Depends(get_current_user)
 ):
     """
-    Скачивает файл бэкапа напрямую из S3 по s3_key.
+    Скачивает файл бэкапа напрямую из S3 по имени файла.
     Доступно только администратору.
+    Строит полный s3_key, добавляя префикс 'backups/'.
     """
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Access denied. Admin rights required.")
 
-    # Проверяем, что ключ начинается с 'backups/' для безопасности
-    if not s3_key.startswith('backups/'):
-        raise HTTPException(status_code=400, detail="Invalid backup key format")
+    s3_key = f"backups/{s3_key_filename}"
 
     try:
         response = s3_client.get_object(Bucket=settings.AWS_S3_BUCKET_NAME, Key=s3_key)
@@ -222,7 +221,12 @@ def download_backup_by_s3_key(
         content_type = response.get('ContentType', 'application/zip')
     except ClientError as e:
         print(f"Error downloading file from S3: {e}")
-        raise HTTPException(status_code=500, detail="Failed to download backup file from storage")
+        # Уточним ошибку, если файл не найден
+        error_code = e.response.get('Error', {}).get('Code')
+        if error_code == 'NoSuchKey':
+             raise HTTPException(status_code=404, detail=f"Backup file not found in S3: {s3_key}")
+        else:
+            raise HTTPException(status_code=500, detail="Failed to download backup file from storage")
 
     def iter_chunks(chunk_size: int = 8192) -> Iterator[bytes]:
         stream = response['Body']

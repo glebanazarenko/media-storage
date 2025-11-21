@@ -277,20 +277,25 @@ def search_files_endpoint(
     category: str = Query("all"),
     include_tags: str = Query("", alias="includeTags"),
     exclude_tags: str = Query("", alias="excludeTags"),
-    min_duration: Optional[float] = Query(None, alias="minDuration"), # Минимальная длительность в секундах
-    max_duration: Optional[float] = Query(None, alias="maxDuration"), # Максимальная длительность в секундах
+    include_groups: str = Query("", alias="includeGroups"),
+    exclude_groups: str = Query("", alias="excludeGroups"),
+    min_duration: Optional[float] = Query(None, alias="minDuration"),
+    max_duration: Optional[float] = Query(None, alias="maxDuration"),
     sort_by: str = Query("date", alias="sortBy"),
     sort_order: str = Query("desc", alias="sortOrder"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=1000),
+    randomize: bool = Query(False, alias="randomize"),
     current_user: User = Depends(get_current_user),
 ):
-    """Поиск файлов по запросу, категориям, тегам и другим параметрам."""
+    """Поиск файлов по запросу, категориям, тегам, группам и другим параметрам."""
     result = search_files_service(
         query=query,
         category=category,
         include_tags=include_tags,
         exclude_tags=exclude_tags,
+        include_groups=include_groups,
+        exclude_groups=exclude_groups,
         min_duration=min_duration,
         max_duration=max_duration,
         sort_by=sort_by,
@@ -298,6 +303,7 @@ def search_files_endpoint(
         page=page,
         limit=limit,
         user_id=current_user.id,
+        randomize=randomize,
     )
 
     return result

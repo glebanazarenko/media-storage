@@ -10,6 +10,7 @@ import { Search } from './pages/Search';
 import { Collections } from './pages/Collections';
 import { CollectionDetail } from './pages/CollectionDetail'; // Импортируем CollectionDetail
 import { Settings } from './pages/Settings';
+import { Tags } from './pages/Tags';
 import './i18n';
 
 // Protected Route Component
@@ -131,6 +132,8 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              
+              <Route path="/tags" element={<Tags />} /> {/* Добавляем новый маршрут */}
 
               {/* Default redirect */}
               <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -11,7 +11,8 @@ import {
   ChevronLeft,
   Languages,
   Eye,
-  EyeOff
+  EyeOff,
+  Tag
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useApp } from '../../contexts/AppContext';
@@ -27,6 +28,7 @@ export const Sidebar: React.FC = () => {
     { icon: Upload, label: t('nav.upload'), path: '/upload' },
     { icon: Search, label: t('nav.search'), path: '/search' },
     { icon: Folder, label: t('nav.collections'), path: '/collections' },
+    { icon: Tag, label: t('nav.tags'), path: '/tags' },
     { icon: Settings, label: t('nav.settings'), path: '/settings' },
   ];
 

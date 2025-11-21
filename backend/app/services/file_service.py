@@ -145,6 +145,8 @@ def search_files_service(
     category: str | None = None,
     include_tags: str = None,
     exclude_tags: str = None,
+    include_groups: str = None,
+    exclude_groups: str = None,
     min_duration: float | None = None,
     max_duration: float | None = None,
     sort_by: str = "created_at",
@@ -152,11 +154,14 @@ def search_files_service(
     page: int = 1,
     limit: int = 20,
     user_id: str = None,
+    randomize: bool = False,
 ) -> dict:
     """Выполняет поиск файлов через репозиторий."""
     # Парсим теги
     include_tags = [t.strip() for t in include_tags.split(",") if t.strip()]
     exclude_tags = [t.strip() for t in exclude_tags.split(",") if t.strip()]
+    include_groups = [g.strip() for g in include_groups.split(",") if g.strip()]
+    exclude_groups = [g.strip() for g in exclude_groups.split(",") if g.strip()]
 
     sort_column = SORT_FIELD_MAP.get(sort_by, "created_at")
 
@@ -165,6 +170,8 @@ def search_files_service(
         category=category,
         include_tags=include_tags,
         exclude_tags=exclude_tags,
+        include_groups=include_groups,
+        exclude_groups=exclude_groups,
         min_duration=min_duration,
         max_duration=max_duration,
         sort_by=sort_column,
@@ -172,6 +179,7 @@ def search_files_service(
         page=page,
         limit=limit,
         user_id=user_id,
+        randomize=randomize,
     )
 
     # Добавляем метаданные (tags_name, category_name)

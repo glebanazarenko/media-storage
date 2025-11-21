@@ -129,10 +129,13 @@ export const filesAPI = {
     category?: string;
     includeTags?: string;
     excludeTags?: string;
+    includeGroups?: string;
+    excludeGroups?: string;
     sortBy?: string;
     sortOrder?: string;
     page?: number;
     limit?: number;
+    randomize?: boolean;
   }) => 
     api.get<{ files: FileItem[]; total: number; page: number; limit: number }>('/files/search', { params }),
 
@@ -148,7 +151,7 @@ export const tagsAPI = {
   searchTags: (query: string, limit: number = 10) => 
     api.get(`/tags/search`, { params: { q: query, limit } }),
   
-  getPopularTags: (limit: number = 20) => 
+  getPopularTags: (limit: number = 1000) => 
     api.get('/tags/popular', { params: { limit } }),
 };
 

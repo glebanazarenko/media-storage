@@ -5,6 +5,7 @@ import re
 from fastapi import HTTPException
 from sqlalchemy import and_, asc, desc, not_, or_, distinct
 from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy import func
 
 from app.core.database import get_db_session
 from app.models.base import Category
@@ -195,6 +196,8 @@ def search_files(
     category: str | None = None,
     include_tags: list[str] = None,
     exclude_tags: list[str] = None,
+    include_groups: list[str] = None,
+    exclude_groups: list[str] = None,
     min_duration: float | None = None,
     max_duration: float | None = None,
     sort_by: str = "created_at",
@@ -202,12 +205,128 @@ def search_files(
     page: int = 1,
     limit: int = 20,
     user_id: str = None,
+    randomize: bool = False, # Новый параметр
 ) -> tuple[list[DBFile], int]:
     """
-    Поиск файлов с фильтрами и доступом через группы.
+    Поиск файлов с фильтрами, доступом через группы и опциональной рандомизацией.
     """
     with get_db_session() as db:
-        query_obj = (
+        # --- Основной запрос для фильтрации и получения ID файлов ---
+        # Этот запрос будет использоваться как основа для фильтрации и подсчёта
+        base_query = (
+            db.query(DBFile.id)
+            .join(Category, DBFile.category_id == Category.id)
+            .outerjoin(file_group, DBFile.id == file_group.c.file_id)
+            .outerjoin(GroupMember, and_(file_group.c.group_id == GroupMember.group_id, GroupMember.user_id == user_id))
+            .filter(
+                or_(
+                    DBFile.owner_id == user_id,
+                    GroupMember.user_id == user_id
+                )
+            )
+        )
+
+        # --- Фильтрация по группам ---
+        if include_groups:
+            group_ids_to_include = db.query(Group.id).filter(Group.name.in_(include_groups)).all()
+            group_ids_to_include = [g[0] for g in group_ids_to_include]
+            if group_ids_to_include:
+                base_query = base_query.filter(file_group.c.group_id.in_(group_ids_to_include))
+            else:
+                base_query = base_query.filter(False)
+
+        if exclude_groups:
+            group_ids_to_exclude = db.query(Group.id).filter(Group.name.in_(exclude_groups)).all()
+            group_ids_to_exclude = [g[0] for g in group_ids_to_exclude]
+            if group_ids_to_exclude:
+                excluded_files_subq = (
+                    db.query(DBFile.id)
+                    .join(file_group, DBFile.id == file_group.c.file_id)
+                    .filter(file_group.c.group_id.in_(group_ids_to_exclude))
+                    .subquery()
+                )
+                base_query = base_query.filter(not_(DBFile.id.in_(db.query(excluded_files_subq.c.id))))
+
+        # --- Остальные фильтры (query, category, tags, duration) ---
+        if query_str:
+            if is_regex(query_str):
+                regex_filter = DBFile.original_name.op("~*")(query_str)
+                base_query = base_query.filter(regex_filter)
+            else:
+                has_glob = ("*" in query_str) or ("?" in query_str)
+                if has_glob:
+                    masks = split_masks(query_str)
+                    if masks:
+                        like_clauses = [
+                            DBFile.original_name.ilike(
+                                glob_to_ilike_pattern(m), escape="\\"
+                            )
+                            for m in masks
+                        ]
+                        base_query = base_query.filter(or_(*like_clauses))
+                else:
+                    text_filter = or_(
+                        DBFile.original_name.ilike(f"%{query_str}%"),
+                        DBFile.description.ilike(f"%{query_str}%"),
+                    )
+                    base_query = base_query.filter(text_filter)
+
+        if category != "all":
+            base_query = base_query.filter(Category.name == category)
+
+        if include_tags:
+            tag_objects = db.query(Tag).filter(Tag.name.in_(include_tags)).all()
+            tag_ids = [str(tag.id) for tag in tag_objects]
+            if tag_ids:
+                include_conditions = [
+                    DBFile.tags.contains([tag_id]) for tag_id in tag_ids
+                ]
+                base_query = base_query.filter(and_(*include_conditions))
+
+        if exclude_tags:
+            exclude_tag_objects = db.query(Tag).filter(Tag.name.in_(exclude_tags)).all()
+            exclude_tag_ids = [str(tag.id) for tag in exclude_tag_objects]
+            if exclude_tag_ids:
+                exclude_conditions = [
+                    not_(DBFile.tags.contains([tag_id])) for tag_id in exclude_tag_ids
+                ]
+                base_query = base_query.filter(and_(*exclude_conditions))
+
+        if min_duration is not None:
+            base_query = base_query.filter(DBFile.duration >= min_duration)
+        if max_duration is not None:
+            base_query = base_query.filter(DBFile.duration <= max_duration)
+
+        # --- Подсчёт общего количества (из базового запроса) ---
+        total = base_query.count()
+
+        # --- Рандомизация или обычная сортировка для выборки ID ---
+        if randomize:
+            # Используем func.random() для PostgreSQL, сортируем ID
+            # DISTINCT не нужен, так как id уникальны
+            sorted_ids_query = base_query.order_by(func.random())
+        else:
+            sort_attr = getattr(DBFile, sort_by, DBFile.created_at)
+            order_func = desc if sort_order == "desc" else asc
+            sorted_ids_query = base_query.order_by(order_func(sort_attr))
+
+        # --- Пагинация для ID ---
+        offset = (page - 1) * limit
+        selected_ids = sorted_ids_query.offset(offset).limit(limit).all()
+        selected_ids = [row[0] for row in selected_ids] # Извлекаем список UUID
+
+        if not selected_ids:
+            # Если по каким-то причинам ID не найдены, возвращаем пустой список и 0
+            return [], total
+
+        # --- Запрос для получения полных объектов файлов по выбранным ID ---
+        # Используем 'in_' для фильтрации по списку ID и снова JOIN'ы для связанных данных
+        # distinct(DBFile.id) нужен, если JOIN'ы могут привести к дубликатам (например, через теги или группы),
+        # но т.к. мы фильтруем по конкретному списку ID, дубликатов быть не должно.
+        # Однако, если файлы могут быть связаны с несколькими группами/тегами, которые учитываются в фильтрах,
+        # то JOIN может создать дубликаты. В этом случае distinct всё равно нужен.
+        # В целях безопасности и соответствия логике, оставим distinct.
+        files_query = (
             db.query(distinct(DBFile.id), DBFile)
             .join(Category, DBFile.category_id == Category.id)
             .outerjoin(file_group, DBFile.id == file_group.c.file_id)
@@ -218,86 +337,49 @@ def search_files(
                     GroupMember.user_id == user_id
                 )
             )
+            .filter(DBFile.id.in_(selected_ids))
+            # Для сохранения порядка, заданного в selected_ids, можно использовать case/when
+            # или сортировать по индексу в списке selected_ids.
+            # Это сложнее, но гарантирует порядок.
+            # Простой способ в SQLAlchemy - использовать order_by с case, но он громоздкий.
+            # Альтернатива - загрузить файлы и отсортировать их в Python.
+            # Используем Python сортировку.
         )
 
-        if query_str:
-            if is_regex(query_str):
-                # Используем регулярное выражение (PostgreSQL: ~*, MySQL: REGEXP)
-                regex_filter = DBFile.original_name.op("~*")(query_str)
-                query_obj = query_obj.filter(regex_filter)
+        # Применяем те же фильтры, что и в base_query, чтобы убедиться, что загруженные файлы подходят
+        # (хотя они уже отфильтрованы по ID, которые прошли через base_query)
+        # Повтор фильтров из base_query:
+        if include_groups:
+            group_ids_to_include = db.query(Group.id).filter(Group.name.in_(include_groups)).all()
+            group_ids_to_include = [g[0] for g in group_ids_to_include]
+            if group_ids_to_include:
+                files_query = files_query.filter(file_group.c.group_id.in_(group_ids_to_include))
             else:
-                # Старая логика: glob или текст
-                has_glob = ("*" in query_str) or ("?" in query_str)
-                if has_glob:
-                    masks = split_masks(query_str)
-                    if masks:
-                        like_clauses = [
-                            DBFile.original_name.ilike(
-                                glob_to_ilike_pattern(m), escape="\\"
-                            )
-                            for m in masks
-                        ]
-                        query_obj = query_obj.filter(or_(*like_clauses))  # ← or_ вместо and_
-                else:
-                    text_filter = or_(
-                        DBFile.original_name.ilike(f"%{query_str}%"),
-                        DBFile.description.ilike(f"%{query_str}%"),
+                files_query = files_query.filter(False) # Не должно сработать, если ID были отфильтрованы
+
+        if exclude_groups:
+            # Не нужно повторять логику исключения для загрузки, т.к. ID уже прошли через неё
+            # Однако, если файлы могут быть связаны с разными группами в одном запросе,
+            # и одна группа исключает, а другая нет, но файл всё равно включён по ID,
+            # то он может попасть сюда. Поэтому фильтр exclude нужен и тут.
+            # Логика исключения: файл НЕ должен быть в НИ ОДНОЙ из исключаемых групп.
+            # Это сложнее выразить через JOIN. Лучше использовать подзапрос, как в base_query.
+            if exclude_groups: # Проверяем снова, так как это может быть пустым списком
+                group_ids_to_exclude = db.query(Group.id).filter(Group.name.in_(exclude_groups)).all()
+                group_ids_to_exclude = [g[0] for g in group_ids_to_exclude]
+                if group_ids_to_exclude:
+                    excluded_files_subq = (
+                        db.query(DBFile.id)
+                        .join(file_group, DBFile.id == file_group.c.file_id)
+                        .filter(file_group.c.group_id.in_(group_ids_to_exclude))
+                        .subquery()
                     )
-                    query_obj = query_obj.filter(text_filter)
-
-        # ... остальные фильтры ...
-        if category != "all":
-            query_obj = query_obj.filter(Category.name == category)
-
-        if include_tags:
-            tag_objects = db.query(Tag).filter(Tag.name.in_(include_tags)).all()
-            tag_ids = [str(tag.id) for tag in tag_objects]
-            if tag_ids:
-                include_conditions = [
-                    DBFile.tags.contains([tag_id]) for tag_id in tag_ids
-                ]
-                query_obj = query_obj.filter(and_(*include_conditions))
-
-        if exclude_tags:
-            exclude_tag_objects = db.query(Tag).filter(Tag.name.in_(exclude_tags)).all()
-            exclude_tag_ids = [str(tag.id) for tag in exclude_tag_objects]
-            if exclude_tag_ids:
-                exclude_conditions = [
-                    not_(DBFile.tags.contains([tag_id])) for tag_id in exclude_tag_ids
-                ]
-                query_obj = query_obj.filter(and_(*exclude_conditions))
-
-        if min_duration is not None:
-            query_obj = query_obj.filter(DBFile.duration >= min_duration)
-        if max_duration is not None:
-            query_obj = query_obj.filter(DBFile.duration <= max_duration)
-
-        sort_attr = getattr(DBFile, sort_by, DBFile.created_at)
-        order_func = desc if sort_order == "desc" else asc
-        query_obj = query_obj.order_by(order_func(sort_attr))
-
-        offset = (page - 1) * limit
-        results = query_obj.offset(offset).limit(limit).all()
-        files = [r[1] for r in results]
-
-        # --- Подсчёт общего количества ---
-        count_query = (
-            db.query(distinct(DBFile.id))
-            .join(Category, DBFile.category_id == Category.id)
-            .outerjoin(file_group, DBFile.id == file_group.c.file_id)
-            .outerjoin(GroupMember, and_(file_group.c.group_id == GroupMember.group_id, GroupMember.user_id == user_id))
-            .filter(
-                or_(
-                    DBFile.owner_id == user_id,
-                    GroupMember.user_id == user_id
-                )
-            )
-        )
+                    files_query = files_query.filter(not_(DBFile.id.in_(db.query(excluded_files_subq.c.id))))
 
         if query_str:
             if is_regex(query_str):
                 regex_filter = DBFile.original_name.op("~*")(query_str)
-                count_query = count_query.filter(regex_filter)
+                files_query = files_query.filter(regex_filter)
             else:
                 has_glob = ("*" in query_str) or ("?" in query_str)
                 if has_glob:
@@ -309,17 +391,16 @@ def search_files(
                             )
                             for m in masks
                         ]
-                        count_query = count_query.filter(or_(*like_clauses))
+                        files_query = files_query.filter(or_(*like_clauses))
                 else:
                     text_filter = or_(
                         DBFile.original_name.ilike(f"%{query_str}%"),
                         DBFile.description.ilike(f"%{query_str}%"),
                     )
-                    count_query = count_query.filter(text_filter)
+                    files_query = files_query.filter(text_filter)
 
-        # ... остальные фильтры ...
         if category != "all":
-            count_query = count_query.filter(Category.name == category)
+            files_query = files_query.filter(Category.name == category)
 
         if include_tags:
             tag_objects = db.query(Tag).filter(Tag.name.in_(include_tags)).all()
@@ -328,7 +409,7 @@ def search_files(
                 include_conditions = [
                     DBFile.tags.contains([tag_id]) for tag_id in tag_ids
                 ]
-                count_query = count_query.filter(and_(*include_conditions))
+                files_query = files_query.filter(and_(*include_conditions))
 
         if exclude_tags:
             exclude_tag_objects = db.query(Tag).filter(Tag.name.in_(exclude_tags)).all()
@@ -337,14 +418,22 @@ def search_files(
                 exclude_conditions = [
                     not_(DBFile.tags.contains([tag_id])) for tag_id in exclude_tag_ids
                 ]
-                count_query = count_query.filter(and_(*exclude_conditions))
+                files_query = files_query.filter(and_(*exclude_conditions))
 
         if min_duration is not None:
-            count_query = count_query.filter(DBFile.duration >= min_duration)
+            files_query = files_query.filter(DBFile.duration >= min_duration)
         if max_duration is not None:
-            count_query = count_query.filter(DBFile.duration <= max_duration)
+            files_query = files_query.filter(DBFile.duration <= max_duration)
 
-        total = count_query.count()
+        # Выполняем запрос для получения файлов
+        results = files_query.all()
+        files = [r[1] for r in results] # Извлекаем объекты DBFile
+
+        # --- Сортировка результатов в Python для сохранения порядка из selected_ids ---
+        # Создаём словарь id -> индекс в selected_ids для быстрой сортировки
+        id_order_map = {file_id: idx for idx, file_id in enumerate(selected_ids)}
+        # Сортируем файлы по порядку, в котором они были в selected_ids
+        files.sort(key=lambda f: id_order_map.get(f.id, len(selected_ids))) # Если id не найден, ставим в конец
 
         return files, total
 

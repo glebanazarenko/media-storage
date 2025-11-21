@@ -2,7 +2,7 @@ import re
 from typing import List
 from uuid import UUID
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 
 from app.core.database import get_db_session
 from sqlalchemy import and_, asc, desc, not_, or_, distinct
@@ -120,3 +120,66 @@ def search_tags(query: str, limit: int, user_id: UUID) -> List[Tag]:
         )
 
         return query_obj.all()
+
+
+def get_popular_tags_with_usage_count(limit: int, user_id: UUID) -> List[dict]:
+    """
+    Get popular tags for the user based on files they own or have access to via groups.
+    Returns a list of dictionaries containing tag ID, name, and usage count.
+    """
+    with get_db_session() as db:
+        # Subquery to get all accessible file IDs for the user (owner or via group)
+        # Используем тот же подход, что и в file_repository.py
+        accessible_files_subq = (
+            db.query(distinct(File.id).label('file_id'))
+            .join(file_group, File.id == file_group.c.file_id, isouter=True) # LEFT JOIN
+            .join(GroupMember, and_(file_group.c.group_id == GroupMember.group_id, GroupMember.user_id == user_id), isouter=True) # LEFT JOIN
+            .filter(
+                or_(
+                    File.owner_id == user_id,
+                    GroupMember.user_id == user_id
+                )
+            )
+            .subquery()
+        )
+
+        # Join the accessible files with the tags JSONB column
+        # We need to unnest the JSONB array of tag IDs
+        # SQLAlchemy's func.jsonb_array_elements can be used here
+        tag_usage_query = (
+            db.query(
+                func.jsonb_array_elements(File.tags).label('tag_id'),
+                func.count(File.id).label('usage_count')
+            )
+            .join(accessible_files_subq, File.id == accessible_files_subq.c.file_id)
+            .filter(File.tags != '[]') # Filter out files with empty tag arrays if necessary
+            .group_by(func.jsonb_array_elements(File.tags))
+        )
+
+        # Execute the query to get tag_id and count
+        tag_counts = tag_usage_query.all()
+
+        if not tag_counts:
+            return []
+
+        # Extract tag IDs and counts
+        tag_ids = [UUID(row.tag_id) for row in tag_counts]
+        count_map = {UUID(row.tag_id): row.usage_count for row in tag_counts}
+
+        # Fetch tag details (name) for the collected IDs
+        tags_details = db.query(Tag.id, Tag.name).filter(Tag.id.in_(tag_ids)).all()
+
+        # Combine tag details with their usage counts
+        result = []
+        for tag_detail in tags_details:
+            tag_id = tag_detail.id
+            if tag_id in count_map:
+                result.append({
+                    'id': str(tag_id),
+                    'name': tag_detail.name,
+                    'usage_count': count_map[tag_id]
+                })
+
+        # Sort by usage count descending and limit
+        result.sort(key=lambda x: x['usage_count'], reverse=True)
+        return result[:limit]

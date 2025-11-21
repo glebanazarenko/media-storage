@@ -12,6 +12,7 @@ const resources = {
       'nav.dashboard': 'Dashboard',
       'nav.upload': 'Upload',
       'nav.collections': 'Collections',
+      'nav.tags': 'Tags',
       'nav.search': 'Search',
       'nav.settings': 'Settings',
       'nav.logout': 'Logout',
@@ -139,12 +140,19 @@ const resources = {
       'tag.exclude': 'Exclude',
       'tag.include': 'Include',
       'tag.alreadyAdded': 'Already added',
+      'tags.description': 'List of tags',
+      'tags.noTagsFound': 'Tags not found',
+
+      // Group Input
+      'group.add': 'Add collections...',
       
       // Search
       'search.placeholder': 'Search files...',
       'search.filters': 'Filters',
       'search.tags': 'Tags',
       'search.excludeTags': 'Exclude Tags',
+      'search.includeGroups': 'Collections',
+      'search.excludeGroups': 'Exclude Collections',
       'search.dateFrom': 'Date From',
       'search.dateTo': 'Date To',
       'search.fileTypes': 'File Types',
@@ -284,6 +292,7 @@ const resources = {
       'nav.dashboard': 'Главная',
       'nav.upload': 'Загрузить',
       'nav.collections': 'Коллекции',
+      'nav.tags': 'Теги',
       'nav.search': 'Поиск',
       'nav.settings': 'Настройки',
       'nav.logout': 'Выход',
@@ -411,12 +420,19 @@ const resources = {
       'tag.exclude': 'Исключить',
       'tag.include': 'Включить',
       'tag.alreadyAdded': 'Уже добавлен',
+      'tags.description': 'Список тегов',
+      'tags.noTagsFound': 'Теги не найдены',
+
+      // Group Input
+      'group.add': 'Добавить коллекции...',
       
       // Search
       'search.placeholder': 'Поиск файлов...',
       'search.filters': 'Фильтры',
       'search.tags': 'Теги',
       'search.excludeTags': 'Исключить теги',
+      'search.includeGroups': 'Коллекции',
+      'search.excludeGroups': 'Исключить коллекции',
       'search.dateFrom': 'Дата с',
       'search.dateTo': 'Дата до',
       'search.fileTypes': 'Типы файлов',

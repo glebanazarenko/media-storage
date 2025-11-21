@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search as SearchIcon, Filter, X } from 'lucide-react';
+import { Search as SearchIcon, Filter, X, Shuffle } from 'lucide-react';
 import { Layout } from '../components/layout/Layout';
 import { FileGrid } from '../components/files/FileGrid';
 import { TagInput } from '../components/files/TagInput';
+import { GroupInput } from '../components/files/GroupInput';
 import { FileItem } from '../types';
 import { useApp } from '../contexts/AppContext';
 import { filesAPI, API_BASE_URL } from '../services/api';
@@ -25,10 +26,12 @@ export const Search: React.FC = () => {
     currentPage: 1
   });
   const [pageInput, setPageInput] = useState('');
-  
   const [minDuration, setMinDuration] = useState<number | ''>('');
   const [maxDuration, setMaxDuration] = useState<number | ''>('');
-  
+  const [includeGroups, setIncludeGroups] = useState<string[]>([]);
+  const [excludeGroups, setExcludeGroups] = useState<string[]>([]);
+  const [randomize, setRandomize] = useState<boolean>(false);
+
   // Хук для работы с параметрами URL
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -43,24 +46,29 @@ export const Search: React.FC = () => {
     const excludeTags = searchParams.get('exclude_tags')?.split(',') || [];
     const minDur = searchParams.get('min_duration');
     const maxDur = searchParams.get('max_duration');
-    
+    const includeGroups = searchParams.get('include_groups')?.split(',') || [];
+    const excludeGroups = searchParams.get('exclude_groups')?.split(',') || [];
+    const randomize = searchParams.get('randomize') === 'true'; // Преобразуем строку в булево
+
     return {
       query,
       category: category as 'all' | '0+' | '16+' | '18+',
       page: isNaN(page) ? 1 : page,
-      sort: sort as 'date' | 'name' | 'size' | 'duration', // Обновлен тип
+      sort: sort as 'date' | 'name' | 'size' | 'duration',
       order: order as 'asc' | 'desc',
       tags,
       excludeTags,
       minDuration: minDur ? parseFloat(minDur) : undefined,
       maxDuration: maxDur ? parseFloat(maxDur) : undefined,
+      includeGroups,
+      excludeGroups,
+      randomize,
     };
   }, [searchParams]);
 
   // Сохранение параметров в URL
   const updateURLParams = useCallback((filters: Partial<ReturnType<typeof getFiltersFromURL>>) => {
     const newParams = new URLSearchParams(searchParams.toString());
-    
     if (filters.query !== undefined) {
       if (filters.query) {
         newParams.set('q', filters.query);
@@ -68,23 +76,18 @@ export const Search: React.FC = () => {
         newParams.delete('q');
       }
     }
-    
     if (filters.category !== undefined) {
       newParams.set('category', filters.category);
     }
-    
     if (filters.page !== undefined) {
       newParams.set('page', filters.page.toString());
     }
-    
     if (filters.sort !== undefined) {
       newParams.set('sort', filters.sort);
     }
-    
     if (filters.order !== undefined) {
       newParams.set('order', filters.order);
     }
-    
     if (filters.tags !== undefined) {
       if (filters.tags.length > 0) {
         newParams.set('tags', filters.tags.join(','));
@@ -92,7 +95,6 @@ export const Search: React.FC = () => {
         newParams.delete('tags');
       }
     }
-    
     if (filters.excludeTags !== undefined) {
       if (filters.excludeTags.length > 0) {
         newParams.set('exclude_tags', filters.excludeTags.join(','));
@@ -100,7 +102,6 @@ export const Search: React.FC = () => {
         newParams.delete('exclude_tags');
       }
     }
-    
     if (filters.minDuration !== undefined) {
       if (filters.minDuration !== '' && filters.minDuration !== undefined) {
         newParams.set('min_duration', filters.minDuration.toString());
@@ -115,14 +116,33 @@ export const Search: React.FC = () => {
         newParams.delete('max_duration');
       }
     }
-    
+    if (filters.includeGroups !== undefined) {
+      if (filters.includeGroups.length > 0) {
+        newParams.set('include_groups', filters.includeGroups.join(','));
+      } else {
+        newParams.delete('include_groups');
+      }
+    }
+    if (filters.excludeGroups !== undefined) {
+      if (filters.excludeGroups.length > 0) {
+        newParams.set('exclude_groups', filters.excludeGroups.join(','));
+      } else {
+        newParams.delete('exclude_groups');
+      }
+    }
+    if (filters.randomize !== undefined) {
+      if (filters.randomize) {
+        newParams.set('randomize', 'true');
+      } else {
+        newParams.delete('randomize');
+      }
+    }
     setSearchParams(newParams);
   }, [searchParams, setSearchParams]);
 
   // Инициализация из URL
   useEffect(() => {
     const urlFilters = getFiltersFromURL();
-    
     setSearchQuery(urlFilters.query);
     setSearchFilters(prev => ({
       ...prev,
@@ -132,21 +152,26 @@ export const Search: React.FC = () => {
       tags: urlFilters.tags,
       excludeTags: urlFilters.excludeTags
     }));
-    
     setMinDuration(urlFilters.minDuration !== undefined ? urlFilters.minDuration : '');
     setMaxDuration(urlFilters.maxDuration !== undefined ? urlFilters.maxDuration : '');
-    
+    setIncludeGroups(urlFilters.includeGroups);
+    setExcludeGroups(urlFilters.excludeGroups);
+    setRandomize(urlFilters.randomize);
+
     // Загружаем файлы с параметрами из URL
     performSearch(
-      urlFilters.page, 
-      urlFilters.query, 
-      urlFilters.category, 
-      urlFilters.tags, 
-      urlFilters.excludeTags, 
-      urlFilters.sort, 
+      urlFilters.page,
+      urlFilters.query,
+      urlFilters.category,
+      urlFilters.tags,
+      urlFilters.excludeTags,
+      urlFilters.sort,
       urlFilters.order,
       urlFilters.minDuration,
-      urlFilters.maxDuration
+      urlFilters.maxDuration,
+      urlFilters.includeGroups,
+      urlFilters.excludeGroups,
+      urlFilters.randomize
     );
   }, [getFiltersFromURL, setSearchFilters]);
 
@@ -156,14 +181,12 @@ export const Search: React.FC = () => {
       id: tagId,
       name: file.tags_name[index] || tagId
     }));
-
-    const thumbnailUrl = file.thumbnail_path 
+    const thumbnailUrl = file.thumbnail_path
       ? `${API_BASE_URL}/files/thumbnail/${file.thumbnail_path.replace('uploads/', '')}`
       : null;
-    const previewUrl = file.preview_path 
+    const previewUrl = file.preview_path
       ? `${API_BASE_URL}/files/preview/${file.preview_path.replace('uploads/', '')}`
       : null;
-
     return {
       id: file.id,
       filename: file.original_name,
@@ -195,7 +218,10 @@ export const Search: React.FC = () => {
     sortBy?: string,
     sortOrder?: string,
     minDur?: number,
-    maxDur?: number
+    maxDur?: number,
+    includeGroupsParam?: string[],
+    excludeGroupsParam?: string[],
+    randomizeParam?: boolean
   ) => {
     setLoading(true);
     try {
@@ -203,7 +229,6 @@ export const Search: React.FC = () => {
         page,
         limit: 20
       };
-      
       if (query) params.query = query;
       if (category) params.category = category;
       if (includeTags && includeTags.length > 0) params.includeTags = includeTags.join(',');
@@ -212,17 +237,17 @@ export const Search: React.FC = () => {
       if (sortOrder) params.sortOrder = sortOrder;
       if (minDur !== undefined && minDur !== null) params.minDuration = minDur;
       if (maxDur !== undefined && maxDur !== null) params.maxDuration = maxDur;
-      
-      const response = await filesAPI.searchFiles(params);
+      if (includeGroupsParam && includeGroupsParam.length > 0) params.includeGroups = includeGroupsParam.join(',');
+      if (excludeGroupsParam && excludeGroupsParam.length > 0) params.excludeGroups = excludeGroupsParam.join(',');
+      if (randomizeParam) params.randomize = randomizeParam; // Передаём как boolean, FastAPI сам преобразует в строку в URL
 
+      const response = await filesAPI.searchFiles(params);
       // Преобразуем данные перед установкой в состояние
       const transformedFiles = response.data.files.map(transformFileData);
-      
       // Рассчитываем количество страниц
       const total = response.data.total;
       const limit = 20;
       const calculatedPages = Math.ceil(total / limit);
-      
       setFiles(transformedFiles);
       setStats({
         total: response.data.total,
@@ -231,9 +256,8 @@ export const Search: React.FC = () => {
       });
       setPageInput(response.data.page.toString());
       setLoading(false);
-      
       // Обновляем URL после успешного поиска
-      updateURLParams({ 
+      updateURLParams({
         page: response.data.page,
         query,
         category,
@@ -242,7 +266,10 @@ export const Search: React.FC = () => {
         sort: sortBy,
         order: sortOrder,
         minDuration: minDur,
-        maxDuration: maxDur
+        maxDuration: maxDur,
+        includeGroups: includeGroupsParam,
+        excludeGroups: excludeGroupsParam,
+        randomize: randomizeParam,
       });
     } catch (error) {
       console.error('Search error:', error);
@@ -251,10 +278,25 @@ export const Search: React.FC = () => {
   };
 
   const handleFilterChange = (key: string, value: any) => {
-    setSearchFilters({
-      ...searchFilters,
-      [key]: value
-    });
+    if (key === 'includeGroups' || key === 'excludeGroups') {
+      if (key === 'includeGroups') {
+        setIncludeGroups(value);
+      } else if (key === 'excludeGroups') {
+        setExcludeGroups(value);
+      }
+      setSearchFilters(prev => ({
+        ...prev,
+        [key]: value
+      }));
+    } else if (key === 'randomize') {
+      setRandomize(value);
+      // Не нужно обновлять searchFilters, так как randomize - это не фильтр в AppContext
+    } else {
+      setSearchFilters({
+        ...searchFilters,
+        [key]: value
+      });
+    }
   };
 
   const clearFilters = () => {
@@ -268,6 +310,9 @@ export const Search: React.FC = () => {
     setSearchQuery('');
     setMinDuration('');
     setMaxDuration('');
+    setIncludeGroups([]);
+    setExcludeGroups([]);
+    setRandomize(false);
     // Сбрасываем URL параметры
     const newParams = new URLSearchParams();
     setSearchParams(newParams);
@@ -314,10 +359,12 @@ export const Search: React.FC = () => {
         if (maxDuration !== undefined && maxDuration !== '' && maxDuration !== null) {
           params.maxDuration = Number(maxDuration); // Убедимся, что это число
         }
+        if (includeGroups && includeGroups.length > 0) params.includeGroups = includeGroups.join(',');
+        if (excludeGroups && excludeGroups.length > 0) params.excludeGroups = excludeGroups.join(',');
+        if (randomize) params.randomize = randomize;
 
         const response = await filesAPI.searchFiles(params);
         const newTransformedFiles = response.data.files.map(transformFileData);
-
         if (newTransformedFiles.length > 0) {
           // Update state as performSearch does
           setFiles(newTransformedFiles);
@@ -335,11 +382,12 @@ export const Search: React.FC = () => {
             excludeTags: searchFilters.excludeTags,
             sort: searchFilters.sortBy,
             order: searchFilters.sortOrder,
-            // Обновляем URL параметры для длительности
             minDuration: minDuration !== undefined && minDuration !== '' && minDuration !== null ? Number(minDuration) : undefined,
-            maxDuration: maxDuration !== undefined && maxDuration !== '' && maxDuration !== null ? Number(maxDuration) : undefined
+            maxDuration: maxDuration !== undefined && maxDuration !== '' && maxDuration !== null ? Number(maxDuration) : undefined,
+            includeGroups,
+            excludeGroups,
+            randomize,
           });
-
           // Now set the selected file to the *last* one on the newly loaded page
           const lastFileIndex = newTransformedFiles.length - 1;
           setCurrentFileIndex(lastFileIndex); // Index of the last file on the *new* page view context
@@ -349,7 +397,6 @@ export const Search: React.FC = () => {
             console.warn("No files found on the previous page, but page number is valid.");
             // Можно оставить как есть или перейти на другую страницу
         }
-
       } catch (error) {
         console.error("Error loading previous page for navigation:", error);
         // Optionally, show an error message to the user
@@ -388,10 +435,12 @@ export const Search: React.FC = () => {
         if (maxDuration !== undefined && maxDuration !== '' && maxDuration !== null) {
           params.maxDuration = Number(maxDuration); // Убедимся, что это число
         }
+        if (includeGroups && includeGroups.length > 0) params.includeGroups = includeGroups.join(',');
+        if (excludeGroups && excludeGroups.length > 0) params.excludeGroups = excludeGroups.join(',');
+        if (randomize) params.randomize = randomize;
 
         const response = await filesAPI.searchFiles(params);
         const newTransformedFiles = response.data.files.map(transformFileData);
-
         if (newTransformedFiles.length > 0) {
           // Update state as performSearch does
           setFiles(newTransformedFiles);
@@ -409,11 +458,12 @@ export const Search: React.FC = () => {
             excludeTags: searchFilters.excludeTags,
             sort: searchFilters.sortBy,
             order: searchFilters.sortOrder,
-            // Обновляем URL параметры для длительности
             minDuration: minDuration !== undefined && minDuration !== '' && minDuration !== null ? Number(minDuration) : undefined,
-            maxDuration: maxDuration !== undefined && maxDuration !== '' && maxDuration !== null ? Number(maxDuration) : undefined
+            maxDuration: maxDuration !== undefined && maxDuration !== '' && maxDuration !== null ? Number(maxDuration) : undefined,
+            includeGroups,
+            excludeGroups,
+            randomize,
           });
-
           // Now set the selected file to the first one on the newly loaded page
           setCurrentFileIndex(0); // Index 0 of the *new* page view context
           setSelectedFile(newTransformedFiles[0]);
@@ -422,7 +472,6 @@ export const Search: React.FC = () => {
             console.warn("No files found on the next page, but page number is valid.");
             // Можно оставить как есть или перейти на другую страницу
         }
-
       } catch (error) {
         console.error("Error loading next page for navigation:", error);
         // Optionally, show an error message to the user
@@ -455,30 +504,36 @@ export const Search: React.FC = () => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     performSearch(
-      1, 
-      searchQuery, 
-      searchFilters.category, 
-      searchFilters.tags, 
-      searchFilters.excludeTags, 
-      searchFilters.sortBy, 
+      1,
+      searchQuery,
+      searchFilters.category,
+      searchFilters.tags,
+      searchFilters.excludeTags,
+      searchFilters.sortBy,
       searchFilters.sortOrder,
-      minDuration || undefined, 
-      maxDuration || undefined
+      minDuration || undefined,
+      maxDuration || undefined,
+      includeGroups,
+      excludeGroups,
+      randomize
     );
   };
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= stats.pages && page !== stats.currentPage) {
       performSearch(
-        page, 
-        searchQuery, 
-        searchFilters.category, 
-        searchFilters.tags, 
-        searchFilters.excludeTags, 
-        searchFilters.sortBy, 
+        page,
+        searchQuery,
+        searchFilters.category,
+        searchFilters.tags,
+        searchFilters.excludeTags,
+        searchFilters.sortBy,
         searchFilters.sortOrder,
-        minDuration || undefined, 
-        maxDuration || undefined
+        minDuration || undefined,
+        maxDuration || undefined,
+        includeGroups,
+        excludeGroups,
+        randomize
       );
     }
   };
@@ -511,7 +566,6 @@ export const Search: React.FC = () => {
         >
           {t('file.previous')}
         </button>
-
         <div className="flex items-center space-x-1">
           <span className="text-slate-400 text-sm">{t('file.page')}</span>
           <input
@@ -533,7 +587,6 @@ export const Search: React.FC = () => {
           />
           <span className="text-slate-400 text-sm">{t('file.of')} {stats.pages}</span>
         </div>
-
         <button
           onClick={() => handlePageChange(stats.currentPage + 1)}
           disabled={stats.currentPage >= stats.pages || loading}
@@ -554,6 +607,28 @@ export const Search: React.FC = () => {
 
   const getFileCountText = () => {
     return t('file.filesTotal', { count: stats.total });
+  };
+
+  // Обработчик для кнопки рандомизации
+  const handleRandomize = () => {
+    // Переключаем состояние рандомизации
+    const newRandomizeState = !randomize;
+    setRandomize(newRandomizeState);
+    // Вызываем поиск с новым состоянием рандомизации, но на текущей странице
+    performSearch(
+      stats.currentPage, // Сохраняем текущую страницу
+      searchQuery,
+      searchFilters.category,
+      searchFilters.tags,
+      searchFilters.excludeTags,
+      searchFilters.sortBy,
+      searchFilters.sortOrder,
+      minDuration || undefined,
+      maxDuration || undefined,
+      includeGroups,
+      excludeGroups,
+      newRandomizeState
+    );
   };
 
   return (
@@ -581,11 +656,22 @@ export const Search: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowFilters(!showFilters)}
-            className={`absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-colors ${
+            className={`absolute right-12 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-colors ${
               showFilters ? 'bg-purple-500 text-white' : 'text-slate-400 hover:text-white'
             }`}
           >
             <Filter className="w-5 h-5" />
+          </button>
+          {/* Новая кнопка рандомизации */}
+          <button
+            type="button"
+            onClick={handleRandomize}
+            className={`absolute right-4 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-colors ${
+              randomize ? 'bg-green-500 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+            title={t('search.randomize')} // Добавьте перевод
+          >
+            <Shuffle className="w-5 h-5" />
           </button>
         </form>
 
@@ -601,7 +687,6 @@ export const Search: React.FC = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* Category Filter */}
               <div>
@@ -619,7 +704,6 @@ export const Search: React.FC = () => {
                   <option value="18+">{t('category.18+')}</option>
                 </select>
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-2">
                   {t('common.minDuration')} ({t('common.second')})
@@ -648,7 +732,6 @@ export const Search: React.FC = () => {
                   placeholder={t('common.maxDuration')}
                 />
               </div>
-
               {/* Sort Options */}
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-2">
@@ -665,7 +748,6 @@ export const Search: React.FC = () => {
                   <option value="duration">{t('common.duration')}</option>
                 </select>
               </div>
-
               {/* Sort Order */}
               <div>
                 <label className="block text-sm font-medium text-slate-200 mb-2">
@@ -680,7 +762,6 @@ export const Search: React.FC = () => {
                   <option value="asc">{t('file.ascending')}</option>
                 </select>
               </div>
-
               {/* Include Tags */}
               <div className="md:col-span-2 lg:col-span-1">
                 <label className="block text-sm font-medium text-slate-200 mb-2">
@@ -693,7 +774,6 @@ export const Search: React.FC = () => {
                   allowNegative={false}
                 />
               </div>
-
               {/* Exclude Tags */}
               <div className="md:col-span-2 lg:col-span-1">
                 <label className="block text-sm font-medium text-slate-200 mb-2">
@@ -703,6 +783,30 @@ export const Search: React.FC = () => {
                   tags={searchFilters.excludeTags}
                   onTagsChange={(tags) => handleFilterChange('excludeTags', tags)}
                   placeholder={t('tag.add')}
+                  allowNegative={false}
+                />
+              </div>
+              {/* Include Groups (Collections) */}
+              <div className="md:col-span-2 lg:col-span-1">
+                <label className="block text-sm font-medium text-slate-200 mb-2">
+                  {t('search.includeGroups')}
+                </label>
+                <GroupInput
+                  groups={includeGroups}
+                  onGroupsChange={(groups) => handleFilterChange('includeGroups', groups)}
+                  placeholder={t('group.add')}
+                  allowNegative={false}
+                />
+              </div>
+              {/* Exclude Groups (Collections) */}
+              <div className="md:col-span-2 lg:col-span-1">
+                <label className="block text-sm font-medium text-slate-200 mb-2">
+                  {t('search.excludeGroups')}
+                </label>
+                <GroupInput
+                  groups={excludeGroups}
+                  onGroupsChange={(groups) => handleFilterChange('excludeGroups', groups)}
+                  placeholder={t('group.add')}
                   allowNegative={false}
                 />
               </div>
@@ -723,7 +827,6 @@ export const Search: React.FC = () => {
                 </span>
               )}
             </div>
-
             <div className="flex items-center justify-center sm:justify-start">
               {renderPagination()}
             </div>
@@ -735,7 +838,7 @@ export const Search: React.FC = () => {
           loading={loading}
           onView={handleFileView}
           onEdit={(editedFile) => {
-            setFiles(prevFiles => 
+            setFiles(prevFiles =>
               prevFiles.map(f => f.id === editedFile.id ? editedFile : f)
             );
           }}

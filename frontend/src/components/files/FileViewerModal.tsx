@@ -55,6 +55,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isRepeat, setIsRepeat] = useState(true);
+  // Новое состояние для "следующее после конца"
+  const [isPlayNextAfterEnd, setIsPlayNextAfterEnd] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mediaNatural, setMediaNatural] = useState({ width: 800, height: 600 });
   const [videoNatural, setVideoNatural] = useState({ width: 800, height: 450 });
@@ -348,10 +350,16 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     const handleEnded = () => {
-      if (isRepeat) {
+      // Изменено: проверяем сначала isPlayNextAfterEnd
+      if (isPlayNextAfterEnd && hasNext && onNext) {
+        // Запускаем следующее видео только если hasNext и onNext определены
+        onNext();
+      } else if (isRepeat) {
+        // Если isPlayNextAfterEnd отключено, проверяем isRepeat
         video.currentTime = 0;
         video.play();
       }
+      // Если обе опции отключены, видео просто остановится
     };
 
     video.addEventListener('timeupdate', handleTimeUpdate);
@@ -367,7 +375,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
     };
-  }, [file.id, isRepeat]);
+  }, [file.id, isRepeat, isPlayNextAfterEnd, hasNext, onNext]);
 
   // Функция для полноэкранного режима
   const toggleFullscreen = () => {
@@ -504,8 +512,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     const now = Date.now();
     const clickPosition = { x: e.clientX, y: e.clientY };
     // Проверяем, является ли это двойным кликом (время между кликами < 300ms и позиция близкая)
-    if (now - lastClickTime < 300 && 
-        Math.abs(clickPosition.x - lastClickPosition.x) < 10 && 
+    if (now - lastClickTime < 300 &&
+        Math.abs(clickPosition.x - lastClickPosition.x) < 10 &&
         Math.abs(clickPosition.y - lastClickPosition.y) < 10) {
       handleDoubleClick(e);
       setLastClickTime(0); // Сбрасываем для предотвращения тройного клика
@@ -543,22 +551,22 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     if (e.touches.length === 1) {
       // Один палец - панорамирование
       setIsPanning(true);
-      setPanStart({ 
-        x: e.touches[0].clientX - panOffset.x - touchPanOffset.x, 
-        y: e.touches[0].clientY - panOffset.y - touchPanOffset.y 
+      setPanStart({
+        x: e.touches[0].clientX - panOffset.x - touchPanOffset.x,
+        y: e.touches[0].clientY - panOffset.y - touchPanOffset.y
       });
     } else if (e.touches.length === 2) {
       // Два пальца - зум
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
       const distance = Math.sqrt(
-        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
         Math.pow(touch2.clientY - touch1.clientY, 2)
       );
-      setTouchStart({ 
-        x: (touch1.clientX + touch2.clientX) / 2, 
-        y: (touch1.clientY + touch2.clientY) / 2, 
-        distance 
+      setTouchStart({
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2,
+        distance
       });
     }
   };
@@ -569,16 +577,16 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     e.stopPropagation();
     if (e.touches.length === 1 && isPanning) {
       // Панорамирование одним пальцем
-      setPanOffset({ 
-        x: e.touches[0].clientX - panStart.x, 
-        y: e.touches[0].clientY - panStart.y 
+      setPanOffset({
+        x: e.touches[0].clientX - panStart.x,
+        y: e.touches[0].clientY - panStart.y
       });
     } else if (e.touches.length === 2 && touchStart) {
       // Зум двумя пальцами с уменьшенной чувствительностью
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
       const distance = Math.sqrt(
-        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
         Math.pow(touch2.clientY - touch1.clientY, 2)
       );
       // Уменьшаем чувствительность зума в 6 раз (2 * 3)
@@ -705,6 +713,19 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
   const toggleRepeat = () => {
     if (videoRef.current) {
       setIsRepeat(!isRepeat);
+      // Если включаем повтор, выключаем "след. после конца"
+      if (!isRepeat) {
+        setIsPlayNextAfterEnd(false);
+      }
+    }
+  };
+  // Новый обработчик для "следующее после конца"
+  const togglePlayNextAfterEnd = () => {
+    const newState = !isPlayNextAfterEnd;
+    setIsPlayNextAfterEnd(newState);
+    // Если включаем "след. после конца", выключаем "повтор"
+    if (newState) {
+      setIsRepeat(false);
     }
   };
 
@@ -763,8 +784,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
     <div
       ref={modalRef}
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={(e) => { 
-        if (e.target === modalRef.current) onClose(); 
+      onClick={(e) => {
+        if (e.target === modalRef.current) onClose();
       }}
       onWheel={(e) => {
         e.preventDefault();
@@ -775,9 +796,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
       {hasPrev && onPrev && (
         <button
           className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10 control-button"
-          onClick={(e) => { 
-            e.stopPropagation(); 
-            onPrev(); 
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrev();
           }}
         >
           <ChevronLeft className="w-12 h-12" />
@@ -786,9 +807,9 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
       {hasNext && onNext && (
         <button
           className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 z-10 control-button"
-          onClick={(e) => { 
-            e.stopPropagation(); 
-            onNext(); 
+          onClick={(e) => {
+            e.stopPropagation();
+            onNext();
           }}
         >
           <ChevronRight className="w-12 h-12" />
@@ -858,8 +879,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 <>
                   <button
                     className="control-button p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (isImage) setZoom(z => Math.max(z / 1.2, 0.2));
                       if (isVideo) setVideoZoom(z => Math.max(z / 1.2, 0.2));
                     }}
@@ -872,8 +893,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   </span>
                   <button
                     className="control-button p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (isImage) setZoom(z => Math.min(z * 1.2, 5));
                       if (isVideo) setVideoZoom(z => Math.min(z * 1.2, 5));
                     }}
@@ -883,8 +904,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                   </button>
                   <button
                     className="control-button p-1.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (isImage) setRotation(r => (r + 90) % 360);
                       if (isVideo) setVideoRotation(r => (r + 90) % 360);
                     }}
@@ -932,8 +953,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
         <div
           ref={mediaRef}
           className="relative overflow-hidden bg-black flex items-center justify-center"
-          style={{ 
-            cursor: isImage ? (isPanning ? 'grabbing' : 'grab') : 
+          style={{
+            cursor: isImage ? (isPanning ? 'grabbing' : 'grab') :
                      isVideo ? (isVideoPanning ? 'grabbing' : 'grab') : 'default'
           }}
         >
@@ -951,8 +972,8 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 alt={file.filename}
                 draggable={false}
                 className="select-none max-w-none max-h-none"
-                style={{ 
-                  width: `${mediaNatural.width}px`, 
+                style={{
+                  width: `${mediaNatural.width}px`,
                   height: `${mediaNatural.height}px`,
                   maxWidth: '100%',
                   maxHeight: '100%',
@@ -963,7 +984,7 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
           )}
           {isVideo && (
             <div className="relative w-full h-full flex flex-col">
-              <div 
+              <div
                 ref={videoContainerRef}
                 className="flex-1 flex items-center justify-center overflow-hidden"
               >
@@ -1041,14 +1062,47 @@ export const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 </div>
                 {/* Кнопка повтора */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // При нажатии на кнопку повтора, выключаем "след. после конца"
+                    if (isRepeat) {
+                      setIsRepeat(false);
+                    } else {
+                      setIsRepeat(true);
+                      setIsPlayNextAfterEnd(false); // Обеспечиваем отключение другой опции
+                    }
+                  }}
                   className={`control-button text-white hover:text-gray-300 transition-colors ${
                     isRepeat ? 'text-purple-500' : ''
                   }`}
-                  title={isRepeat ? t('file.viewer.disableRepeat') : t('file.viewer.enableRepeat')}
+                  title={
+                    isRepeat
+                      ? t('file.viewer.disableRepeat') // Используйте соответствующие ключи i18n
+                      : t('file.viewer.enableRepeat')
+                  }
                 >
                   <Repeat className={`w-4 h-4 ${isRepeat ? 'fill-current' : ''}`} />
                 </button>
+                {/* Кнопка "СЛЕДУЮЩЕЕ ПОСЛЕ КОНЦА" */}
+                {hasNext && onNext && ( // Условие: следующий файл доступен
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePlayNextAfterEnd();
+                    }}
+                    className={`control-button text-white hover:text-gray-300 transition-colors ${
+                      isPlayNextAfterEnd ? 'text-green-500' : '' // Пример подсветки активности
+                    }`}
+                    title={
+                      isPlayNextAfterEnd
+                        ? "Отключить следующее после конца" // Используйте соответствующие ключи i18n
+                        : "Включить следующее после конца"
+                    }
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-play"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+                    {/* Или используйте другой значок, например ChevronRight */}
+                  </button>
+                )}
                 {/* Кнопка полноэкранного режима в контролах */}
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
